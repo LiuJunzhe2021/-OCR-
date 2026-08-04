@@ -18,23 +18,39 @@ public class ClassifyController {
         this.classifyService = classifyService;
     }
 
+    private Map<String, Object> requireLlm(Map<String, Object> body) {
+        @SuppressWarnings("unchecked")
+        Map<String, Object> llm = (Map<String, Object>) body.get("llm");
+        if (llm == null) throw new IllegalArgumentException("缺少 llm 配置");
+        return llm;
+    }
+
     @PostMapping("/api/tasks/{taskId}/classify")
     public ResponseEntity<Map<String, Object>> classify(
-            @PathVariable String taskId,
-            @RequestBody Map<String, Object> body
-    ) {
-        @SuppressWarnings("unchecked")
-        Map<String, Object> llmConfig = (Map<String, Object>) body.get("llm");
-        if (llmConfig == null) {
-            throw new IllegalArgumentException("缺少 llm 配置");
-        }
-        return ResponseEntity.ok(classifyService.classify(taskId, llmConfig));
+            @PathVariable String taskId, @RequestBody Map<String, Object> body) {
+        return ResponseEntity.ok(classifyService.classify(taskId, requireLlm(body)));
+    }
+
+    @PostMapping("/api/tasks/{taskId}/audit")
+    public ResponseEntity<Map<String, Object>> audit(
+            @PathVariable String taskId, @RequestBody Map<String, Object> body) {
+        return ResponseEntity.ok(classifyService.audit(taskId, requireLlm(body)));
+    }
+
+    @PostMapping("/api/tasks/{taskId}/correct")
+    public ResponseEntity<Map<String, Object>> correct(
+            @PathVariable String taskId, @RequestBody Map<String, Object> body) {
+        return ResponseEntity.ok(classifyService.correct(taskId, requireLlm(body)));
+    }
+
+    @PostMapping("/api/tasks/{taskId}/fill")
+    public ResponseEntity<Map<String, Object>> fill(
+            @PathVariable String taskId, @RequestBody Map<String, Object> body) {
+        return ResponseEntity.ok(classifyService.fill(taskId, requireLlm(body)));
     }
 
     @PostMapping("/api/llm/test")
-    public ResponseEntity<Map<String, Object>> testConnection(
-            @RequestBody Map<String, Object> body
-    ) {
+    public ResponseEntity<Map<String, Object>> testConnection(@RequestBody Map<String, Object> body) {
         return ResponseEntity.ok(classifyService.testConnection(body));
     }
 }

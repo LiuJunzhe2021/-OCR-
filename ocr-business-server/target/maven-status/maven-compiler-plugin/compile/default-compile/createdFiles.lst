@@ -1,4 +1,6 @@
+com\example\ocr\service\TransactionSplitService.class
 com\example\ocr\controller\TaskController.class
+com\example\ocr\repository\OcrAccountRepository.class
 com\example\ocr\client\FlaskOcrClient.class
 com\example\ocr\dto\TaskResponse.class
 com\example\ocr\service\ReviewWorkbookService.class
@@ -6,7 +8,14 @@ com\example\ocr\service\TaskService.class
 com\example\ocr\repository\OcrTaskRepository.class
 com\example\ocr\domain\TaskStatus.class
 com\example\ocr\OcrBusinessApplication.class
+com\example\ocr\controller\ClassifyController.class
+com\example\ocr\controller\TransactionController.class
 com\example\ocr\config\WebConfig.class
+com\example\ocr\domain\OcrTransaction.class
+com\example\ocr\domain\OcrAccount.class
+com\example\ocr\service\LlmClassifyService$RowUpdater.class
+com\example\ocr\service\LlmClassifyService.class
 com\example\ocr\service\TaskProcessor.class
 com\example\ocr\controller\ApiExceptionHandler.class
+com\example\ocr\repository\OcrTransactionRepository.class
 com\example\ocr\domain\OcrTask.class

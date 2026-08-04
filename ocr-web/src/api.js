@@ -36,16 +36,14 @@ export const getAccount = (taskId) =>
 export const updateTransaction = (id, body) =>
   api.patch(`/transactions/${id}`, body).then(({ data }) => data)
 
-// ===== LLM 分类 API =====
+// ===== LLM AI 辅助 API =====
 export const classifyTransactions = (taskId, body) =>
   api.post(`/tasks/${taskId}/classify`, body).then(({ data }) => data)
+export const auditTransactions = (taskId, body) =>
+  api.post(`/tasks/${taskId}/audit`, body).then(({ data }) => data)
+export const correctTransactions = (taskId, body) =>
+  api.post(`/tasks/${taskId}/correct`, body).then(({ data }) => data)
+export const fillTransactions = (taskId, body) =>
+  api.post(`/tasks/${taskId}/fill`, body).then(({ data }) => data)
 export const testLlmConnection = (config) =>
   api.post('/llm/test', config).then(({ data }) => data)
-
-// ===== 关系表 API（结构化数据库表） =====
-export const getTransactions = (taskId) =>
-  api.get(`/tasks/${taskId}/transactions`).then(({ data }) => data)
-export const getAccount = (taskId) =>
-  api.get(`/tasks/${taskId}/account`).then(({ data }) => data)
-export const updateTransaction = (id, body) =>
-  api.patch(`/transactions/${id}`, body).then(({ data }) => data)
