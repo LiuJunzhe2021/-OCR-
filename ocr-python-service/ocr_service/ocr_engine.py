@@ -70,6 +70,9 @@ class MultiModelOCREngine:
             return self._paddle
         with self._paddle_lock:
             if self._paddle is None:
+                # 禁用 ONEDNN 避免 PaddlePaddle 3.x CPU pir::ArrayAttribute 错误
+                import os as _os
+                _os.environ.setdefault("FLAGS_use_onednn", "0")
                 if importlib.util.find_spec("paddleocr") is None:
                     raise RuntimeError("未安装PaddleOCR，请安装requirements.txt")
                 module = importlib.import_module("paddleocr")

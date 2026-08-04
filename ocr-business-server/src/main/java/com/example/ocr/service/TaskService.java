@@ -27,15 +27,18 @@ public class TaskService {
 
     private final OcrTaskRepository repository;
     private final TaskProcessor processor;
+    private final TransactionSplitService splitService;
     private final Path uploadDirectory;
 
     public TaskService(
             OcrTaskRepository repository,
             TaskProcessor processor,
+            TransactionSplitService splitService,
             @Value("${app.storage-dir:./data}") String storageDirectory
     ) {
         this.repository = repository;
         this.processor = processor;
+        this.splitService = splitService;
         this.uploadDirectory = Path.of(storageDirectory).toAbsolutePath().normalize().resolve("uploads");
     }
 
@@ -92,6 +95,10 @@ public class TaskService {
         OcrTask task = require(id);
         task.reviseResult(resultJson);
         repository.save(task);
+        // 修订后重新拆分为关系表行
+        try {
+            splitService.splitFromResultJson(id, resultJson);
+        } catch (Exception ignored) {}
     }
 
     public void delete(String id) throws IOException {

@@ -27,3 +27,11 @@ export function downloadUrl(taskId, type) {
   const suffix = type === 'xlsx' ? 'review.xlsx' : `result.${type}`
   return `${api.defaults.baseURL}/tasks/${taskId}/${suffix}`
 }
+
+// ===== 关系表 API（结构化数据库表） =====
+export const getTransactions = (taskId) =>
+  api.get(`/tasks/${taskId}/transactions`).then(({ data }) => data)
+export const getAccount = (taskId) =>
+  api.get(`/tasks/${taskId}/account`).then(({ data }) => data)
+export const updateTransaction = (id, body) =>
+  api.patch(`/transactions/${id}`, body).then(({ data }) => data)

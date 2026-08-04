@@ -14,10 +14,13 @@ import java.nio.file.Path;
 public class TaskProcessor {
     private final OcrTaskRepository repository;
     private final FlaskOcrClient client;
+    private final TransactionSplitService splitService;
 
-    public TaskProcessor(OcrTaskRepository repository, FlaskOcrClient client) {
+    public TaskProcessor(OcrTaskRepository repository, FlaskOcrClient client,
+                         TransactionSplitService splitService) {
         this.repository = repository;
         this.client = client;
+        this.splitService = splitService;
     }
 
     @Async
@@ -29,15 +32,20 @@ public class TaskProcessor {
         try {
             String result = client.recognize(Path.of(task.getUploadPath()), task.getMode());
             task.completed(result);
+            repository.save(task);
+            // OCR 完成后自动拆解为关系表行
+            try {
+                splitService.splitFromResultJson(id, result);
+            } catch (Exception ignored) {
+                // 拆表失败不影响任务完成状态，后续可手动触发
+            }
         } catch (Exception exc) {
             task.failed(exc.getMessage());
-        } finally {
             repository.save(task);
+        } finally {
             try {
                 Files.deleteIfExists(Path.of(task.getUploadPath()));
-            } catch (Exception ignored) {
-                // 临时文件清理失败不改变识别任务结果。
-            }
+            } catch (Exception ignored) {}
         }
     }
 }
