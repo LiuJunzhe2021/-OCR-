@@ -1,6 +1,7 @@
 <script setup>
 import { computed, onMounted, onUnmounted, ref } from 'vue'
 import { createTask, deleteTask, downloadUrl, getResult, getTask, listTasks, updateResult } from './api'
+import ClassifyPanel from './components/ClassifyPanel.vue'
 
 const selectedFile = ref(null)
 const mode = ref('auto')
@@ -305,6 +306,8 @@ onUnmounted(stopPolling)
             <div v-if="result.warnings?.length" class="warning-box">
               <strong>处理警告</strong><span v-for="warning in result.warnings" :key="warning">{{ warning }}</span>
             </div>
+
+            <ClassifyPanel :task-id="activeTask.id" />
 
             <div class="section-list">
               <details v-for="(item, index) in result.sections" :key="`${item.source}-${index}`" :open="index === 0">
