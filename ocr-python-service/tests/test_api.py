@@ -1,0 +1,44 @@
+from __future__ import annotations
+
+import io
+
+from app import create_app
+
+
+class FakeService:
+    supported_extensions = {".pdf"}
+
+    @staticmethod
+    def health():
+        return {"status": "UP", "ocr": {"paddleOcrPrimary": True}}
+
+    @staticmethod
+    def extract(_path, original_name, mode):
+        return {
+            "originalFilename": original_name,
+            "fileType": "pdf",
+            "mode": mode,
+            "sections": [],
+            "warnings": [],
+            "fullText": "",
+            "summary": {"primaryOcrModel": "paddleocr"},
+        }
+
+
+def test_health_and_upload_contract():
+    app = create_app(FakeService())
+    client = app.test_client()
+
+    assert client.get("/health").get_json()["status"] == "UP"
+    response = client.post(
+        "/internal/ocr",
+        data={
+            "mode": "auto",
+            "file": (io.BytesIO(b"pdf"), "statement.pdf"),
+        },
+        content_type="multipart/form-data",
+    )
+    body = response.get_json()
+    assert response.status_code == 200
+    assert body["success"] is True
+    assert body["summary"]["primaryOcrModel"] == "paddleocr"

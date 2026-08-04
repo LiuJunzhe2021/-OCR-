@@ -1,0 +1,12 @@
+com\example\ocr\controller\TaskController.class
+com\example\ocr\client\FlaskOcrClient.class
+com\example\ocr\dto\TaskResponse.class
+com\example\ocr\service\ReviewWorkbookService.class
+com\example\ocr\service\TaskService.class
+com\example\ocr\repository\OcrTaskRepository.class
+com\example\ocr\domain\TaskStatus.class
+com\example\ocr\OcrBusinessApplication.class
+com\example\ocr\config\WebConfig.class
+com\example\ocr\service\TaskProcessor.class
+com\example\ocr\controller\ApiExceptionHandler.class
+com\example\ocr\domain\OcrTask.class

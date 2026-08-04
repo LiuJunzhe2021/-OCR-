@@ -1,0 +1,32 @@
+server:
+  port: 8080
+  servlet:
+    encoding:
+      charset: UTF-8
+      enabled: true
+      force: true
+  tomcat:
+    max-swallow-size: 60MB
+
+spring:
+  application:
+    name: ocr-business-server
+  datasource:
+    # 单实例桌面/课程项目无需 H2 AUTO_SERVER；避免受限网络环境下的本机回连失败。
+    url: ${OCR_DATABASE_URL:jdbc:h2:file:./data/ocrdb}
+    driver-class-name: org.h2.Driver
+    username: sa
+    password:
+  jpa:
+    hibernate:
+      ddl-auto: update
+    open-in-view: false
+  servlet:
+    multipart:
+      max-file-size: 50MB
+      max-request-size: 52MB
+
+app:
+  flask-base-url: ${FLASK_BASE_URL:http://127.0.0.1:5001}
+  frontend-origin: ${FRONTEND_ORIGIN:http://localhost:5173}
+  storage-dir: ${OCR_STORAGE_DIR:./data}

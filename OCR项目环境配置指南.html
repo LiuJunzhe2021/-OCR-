@@ -1,0 +1,152 @@
+<!doctype html>
+<html lang="zh-CN">
+<head>
+  <meta charset="utf-8">
+  <title>OCR 项目环境配置与运行指南</title>
+  <style>
+    @page { size: A4; margin: 15mm 16mm 16mm; }
+    * { box-sizing: border-box; }
+    body { margin: 0; color: #1f2937; font-family: "Microsoft YaHei", "SimHei", sans-serif; font-size: 10.5pt; line-height: 1.55; }
+    h1 { margin: 0 0 5mm; color: #123a63; font-size: 23pt; }
+    h2 { margin: 7mm 0 3mm; padding-bottom: 1.5mm; border-bottom: 1px solid #aac3db; color: #174e7a; font-size: 15pt; break-after: avoid; }
+    h3 { margin: 4mm 0 2mm; color: #245f89; font-size: 11.5pt; break-after: avoid; }
+    p { margin: 1.5mm 0; }
+    ul, ol { margin: 1.5mm 0 2.5mm 6mm; padding-left: 5mm; }
+    li { margin: 1mm 0; }
+    table { width: 100%; border-collapse: collapse; margin: 3mm 0; break-inside: avoid; }
+    th, td { border: 1px solid #b8c7d5; padding: 2mm 2.5mm; text-align: left; vertical-align: top; }
+    th { background: #eaf2f8; color: #173d5b; }
+    code { font-family: Consolas, monospace; font-size: 9pt; }
+    pre { margin: 2mm 0 3mm; padding: 3mm; border-left: 3px solid #3f7daa; border-radius: 2px; background: #f4f7fa; font-family: Consolas, monospace; font-size: 8.8pt; line-height: 1.45; white-space: pre-wrap; word-break: break-all; break-inside: avoid; }
+    .lead { color: #4b5563; font-size: 11pt; }
+    .note { margin: 3mm 0; padding: 2.5mm 3mm; border-radius: 3px; background: #fff7df; border: 1px solid #ead69a; break-inside: avoid; }
+    .ok { background: #eaf7ef; border-color: #9cc8aa; }
+    .page-break { break-before: page; }
+    .footer { margin-top: 8mm; padding-top: 3mm; border-top: 1px solid #ccd6df; color: #687684; font-size: 8.5pt; }
+  </style>
+</head>
+<body>
+  <h1>OCR 项目环境配置与运行指南</h1>
+  <p class="lead">适用目录：<code>C:\Users\lenovo\Desktop\OCR total</code>　｜　Windows 11</p>
+
+  <h2>1. 项目结构与端口</h2>
+  <table>
+    <thead><tr><th>组件</th><th>目录</th><th>技术与版本</th><th>端口</th></tr></thead>
+    <tbody>
+      <tr><td>Python OCR 服务</td><td><code>ocr-python-service</code></td><td>Python 3.10/3.11、Flask、PaddleOCR</td><td>5001</td></tr>
+      <tr><td>Java 业务后端</td><td><code>ocr-business-server</code></td><td>JDK 17、Maven 3.9+、Spring Boot</td><td>8080</td></tr>
+      <tr><td>Web 前端</td><td><code>ocr-web</code></td><td>Node.js LTS、npm、Vue 3、Vite</td><td>5173</td></tr>
+    </tbody>
+  </table>
+  <div class="note ok"><strong>正确启动顺序：</strong>Python OCR 服务 → Java 后端 → Vue 前端。三个服务分别占用一个终端窗口，运行期间不要关闭。</div>
+
+  <h2>2. Java 17 配置</h2>
+  <p>已安装的 JDK 路径：</p>
+  <pre>C:\Users\lenovo\AppData\Local\Programs\Eclipse Adoptium\jdk-17.0.20.8-hotspot</pre>
+  <p>用户环境变量：</p>
+  <pre>JAVA_HOME=C:\Users\lenovo\AppData\Local\Programs\Eclipse Adoptium\jdk-17.0.20.8-hotspot
+Path 新增：%JAVA_HOME%\bin</pre>
+  <p>检查命令：</p>
+  <pre>where java
+java -version</pre>
+  <p>应优先找到 Adoptium 路径，并显示 Java 17。若仍找到 Java 8，检查系统变量 Path 中是否残留 Oracle 的 <code>java8path</code> 或 <code>javapath</code>。</p>
+
+  <h2>3. Maven 配置</h2>
+  <p>已使用 Maven 3.9.16，目录：</p>
+  <pre>C:\Users\lenovo\Desktop\apache-maven-3.9.16</pre>
+  <p>用户环境变量：</p>
+  <pre>MAVEN_HOME=C:\Users\lenovo\Desktop\apache-maven-3.9.16
+Path 新增：C:\Users\lenovo\Desktop\apache-maven-3.9.16\bin</pre>
+  <p>检查命令：</p>
+  <pre>echo %MAVEN_HOME%
+where mvn
+mvn -version</pre>
+  <p>输出应包含 Maven 3.9.16 和 Java 17。如果在 VS Code 内修改环境变量，需要彻底关闭所有 VS Code 窗口并重新打开；只新建终端标签页不会刷新环境。</p>
+
+  <h2 class="page-break">4. Python OCR 环境</h2>
+  <p>推荐使用 Python 3.10 或 3.11（64 位），不要用 Python 3.13。当前使用 Conda 虚拟环境 <code>jrrg</code>。</p>
+  <h3>激活环境并安装依赖</h3>
+  <pre>conda activate jrrg
+python --version
+cd /d "C:\Users\lenovo\Desktop\OCR total\ocr-python-service"
+python -m pip install --upgrade pip
+python -m pip install -r requirements.txt</pre>
+  <p>如果当前不在 Python 服务目录，也可直接使用完整路径：</p>
+  <pre>python -m pip install -r "C:\Users\lenovo\Desktop\OCR total\ocr-python-service\requirements.txt"</pre>
+
+  <h3>创建配置文件</h3>
+  <pre>cd /d "C:\Users\lenovo\Desktop\OCR total\ocr-python-service"
+copy .env.example .env</pre>
+  <p>没有安装 Tesseract 时，将 <code>.env</code> 设置为：</p>
+  <pre>TESSERACT_CMD=
+VERIFY_WITH_TESSERACT=false</pre>
+  <p>若安装了 Tesseract，并带有中文和英文语言包：</p>
+  <pre>TESSERACT_CMD=C:\Program Files\Tesseract-OCR\tesseract.exe
+TESSERACT_LANG=chi_sim+eng
+VERIFY_WITH_TESSERACT=true</pre>
+
+  <h3>Windows CPU 的 oneDNN 兼容处理</h3>
+  <p>若出现 <code>ConvertPirAttribute2RuntimeAttribute not support</code>，先在 <code>.env</code> 末尾增加：</p>
+  <pre>FLAGS_use_mkldnn=0</pre>
+  <p>如仍报同样错误，在 <code>ocr_service\ocr_engine.py</code> 创建 <code>PaddleOCR</code> 的参数中加入：</p>
+  <pre>enable_mkldnn=False,</pre>
+  <p><code>RequestsDependencyWarning</code>、没有 <code>ccache</code>、模型已缓存等提示通常不是导致任务失败的致命错误。</p>
+
+  <h3>启动与检查</h3>
+  <pre>cd /d "C:\Users\lenovo\Desktop\OCR total\ocr-python-service"
+conda activate jrrg
+python app.py</pre>
+  <p>另开终端检查：</p>
+  <pre>curl http://127.0.0.1:5001/health</pre>
+  <p>返回内容中的 <code>ready</code> 应为 <code>true</code>。</p>
+
+  <h2>5. 启动 Java 后端</h2>
+  <pre>cd /d "C:\Users\lenovo\Desktop\OCR total\ocr-business-server"
+mvn spring-boot:run</pre>
+  <p>首次运行会联网下载 Maven 依赖。出现以下日志即表示成功：</p>
+  <pre>Tomcat started on port 8080
+Started OcrBusinessApplication</pre>
+  <p>终端不返回提示符是正常的，因为服务正在监听端口。按 <code>Ctrl+C</code> 才会停止。</p>
+
+  <h2 class="page-break">6. Node.js 与前端</h2>
+  <p>安装 Node.js LTS（推荐 Node.js 22 或更新的兼容 LTS），npm 会随 Node.js 一起安装。winget 命令：</p>
+  <pre>winget install --id OpenJS.NodeJS.LTS -e --source winget</pre>
+  <p>安装后彻底重启 VS Code/终端，再检查：</p>
+  <pre>node --version
+npm --version</pre>
+  <p>安装前端依赖并启动：</p>
+  <pre>cd /d "C:\Users\lenovo\Desktop\OCR total\ocr-web"
+npm ci
+npm run dev</pre>
+  <p>浏览器访问：</p>
+  <pre>http://localhost:5173</pre>
+
+  <h2>7. 每次运行项目的快捷流程</h2>
+  <h3>终端 1：Python OCR 服务</h3>
+  <pre>conda activate jrrg
+cd /d "C:\Users\lenovo\Desktop\OCR total\ocr-python-service"
+python app.py</pre>
+  <h3>终端 2：Java 后端</h3>
+  <pre>cd /d "C:\Users\lenovo\Desktop\OCR total\ocr-business-server"
+mvn spring-boot:run</pre>
+  <h3>终端 3：Vue 前端</h3>
+  <pre>cd /d "C:\Users\lenovo\Desktop\OCR total\ocr-web"
+npm run dev</pre>
+
+  <h2>8. 常见故障检查</h2>
+  <table>
+    <thead><tr><th>现象</th><th>处理方法</th></tr></thead>
+    <tbody>
+      <tr><td><code>mvn</code> 不是内部或外部命令</td><td>检查 <code>MAVEN_HOME</code> 和用户 Path；彻底重启 VS Code。</td></tr>
+      <tr><td><code>npm</code> 不是内部或外部命令</td><td>安装 Node.js LTS，重启终端后检查 <code>node --version</code>。</td></tr>
+      <tr><td>找不到 <code>requirements.txt</code></td><td>进入 <code>ocr-python-service</code>，或对依赖文件使用完整路径。</td></tr>
+      <tr><td>前端返回 HTTP 500</td><td>查看 Python 服务窗口最后一段完整 Traceback；Java 通常只是转发了 Python 错误。</td></tr>
+      <tr><td>端口被占用</td><td>检查 5001、8080、5173 是否已有旧服务运行，先用 <code>Ctrl+C</code> 停止旧进程。</td></tr>
+      <tr><td>旧版 <code>.doc</code> 无法解析</td><td>安装 LibreOffice 并加入 Path；<code>.docx</code> 不需要。</td></tr>
+    </tbody>
+  </table>
+
+  <div class="note"><strong>提示：</strong>默认数据库是本地 H2，无需安装 MySQL；上传文件默认限制为 50 MB。首次 OCR 可能下载模型，因此耗时较长并需要联网。</div>
+  <p class="footer">生成日期：2026-08-03　｜　OCR total 项目本地环境指南</p>
+</body>
+</html>
