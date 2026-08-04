@@ -102,11 +102,43 @@ public class ReviewWorkbookService {
             setWidths(candidates, new int[]{24, 16, 12, 12, 80});
 
             createSummary(workbook, header, percent, task, rowIndex);
+            createTransactionsSheet(workbook, root, header, wrap);
             createSourceSheets(workbook, root, header, wrap);
             workbook.setForceFormulaRecalculation(true);
             workbook.write(output);
             return output.toByteArray();
         }
+    }
+
+    private static void createTransactionsSheet(Workbook workbook, JsonNode root, CellStyle header, CellStyle wrap) {
+        Sheet sheet = workbook.createSheet("标准化流水");
+        String[] headers = {
+                "流水ID", "交易日期", "交易方", "对手方", "交易性质", "金额", "备注",
+                "自动分类", "需复核", "校验信息"
+        };
+        writeHeader(sheet, headers, header);
+        int rowIndex = 1;
+        for (JsonNode transaction : root.path("transactions")) {
+            Row row = sheet.createRow(rowIndex++);
+            text(row, 0, transaction.path("id").asText(), wrap);
+            text(row, 1, transaction.path("transactionDate").asText(), wrap);
+            text(row, 2, transaction.path("party").asText(), wrap);
+            text(row, 3, transaction.path("counterparty").asText(), wrap);
+            text(row, 4, transaction.path("transactionNature").asText(), wrap);
+            number(row, 5, transaction.get("amount"), wrap);
+            text(row, 6, transaction.path("remarks").asText(), wrap);
+            text(row, 7, transaction.path("category").asText("其他"), wrap);
+            text(row, 8, transaction.path("manualReviewRequired").asBoolean() ? "是" : "否", wrap);
+            StringBuilder issues = new StringBuilder();
+            for (JsonNode issue : transaction.path("validations")) {
+                if (!issues.isEmpty()) issues.append("；");
+                issues.append(issue.path("message").asText());
+            }
+            text(row, 9, issues.toString(), wrap);
+        }
+        sheet.createFreezePane(0, 1);
+        sheet.setAutoFilter(new CellRangeAddress(0, Math.max(1, rowIndex - 1), 0, headers.length - 1));
+        setWidths(sheet, new int[]{18, 13, 24, 24, 20, 14, 36, 15, 10, 36});
     }
 
     private static void configureReviewSheet(Sheet sheet, int rowCount) {
@@ -221,6 +253,14 @@ public class ReviewWorkbookService {
     private static void text(Row row, int column, String value, CellStyle style) {
         Cell cell = row.createCell(column);
         cell.setCellValue(value);
+        cell.setCellStyle(style);
+    }
+
+    private static void number(Row row, int column, JsonNode value, CellStyle style) {
+        Cell cell = row.createCell(column);
+        if (value != null && value.isNumber()) {
+            cell.setCellValue(value.asDouble());
+        }
         cell.setCellStyle(style);
     }
 

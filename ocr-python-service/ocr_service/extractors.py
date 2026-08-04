@@ -11,6 +11,7 @@ from typing import Any
 import fitz
 import pandas as pd
 import pdfplumber
+import openpyxl
 from docx import Document
 from PIL import Image
 
@@ -68,6 +69,19 @@ class Extractors:
         ], recognition.warnings
 
     def excel(self, path: Path) -> tuple[list[dict[str, Any]], list[str]]:
+        formula_cells: dict[str, list[str]] = {}
+        if path.suffix.lower() == ".xlsx":
+            workbook = openpyxl.load_workbook(path, data_only=False, read_only=True)
+            try:
+                for sheet in workbook.worksheets:
+                    formula_cells[sheet.title] = [
+                        cell.coordinate
+                        for row in sheet.iter_rows()
+                        for cell in row
+                        if cell.data_type == "f"
+                    ]
+            finally:
+                workbook.close()
         sheets = pd.read_excel(
             path,
             sheet_name=None,
@@ -94,6 +108,7 @@ class Extractors:
                         "rowCount": len(rows),
                         "columnCount": max((len(row) for row in rows), default=0),
                         "ocrUsed": False,
+                        "formulaCells": formula_cells.get(name, []),
                     },
                     rows,
                 )

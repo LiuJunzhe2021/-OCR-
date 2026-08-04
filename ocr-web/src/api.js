@@ -8,6 +8,7 @@ const api = axios.create({
 export const listTasks = () => api.get('/tasks').then(({ data }) => data)
 export const getTask = (id) => api.get(`/tasks/${id}`).then(({ data }) => data)
 export const getResult = (id) => api.get(`/tasks/${id}/result`).then(({ data }) => data)
+export const updateResult = (id, result) => api.put(`/tasks/${id}/result`, result).then(({ data }) => data)
 export const deleteTask = (id) => api.delete(`/tasks/${id}`)
 
 export async function createTask(file, mode, onProgress) {

@@ -1,6 +1,6 @@
 <script setup>
 import { computed, onMounted, onUnmounted, ref } from 'vue'
-import { createTask, deleteTask, downloadUrl, getResult, getTask, listTasks } from './api'
+import { createTask, deleteTask, downloadUrl, getResult, getTask, listTasks, updateResult } from './api'
 
 const selectedFile = ref(null)
 const mode = ref('auto')
@@ -11,10 +11,14 @@ const activeTask = ref(null)
 const result = ref(null)
 const error = ref('')
 const dragActive = ref(false)
+const saving = ref(false)
+const saved = ref(false)
 let pollTimer = null
 
 const isFinished = computed(() => activeTask.value?.status === 'COMPLETED')
 const reviewCount = computed(() => result.value?.summary?.manualReviewCount || 0)
+const transactions = computed(() => result.value?.transactions || [])
+const transactionIssueCount = computed(() => transactions.value.reduce((total, item) => total + (item.validations?.length || 0), 0))
 
 function chooseFile(file) {
   if (!file) return
@@ -107,6 +111,41 @@ async function removeTask(task) {
 
 function download(type) {
   if (activeTask.value) window.open(downloadUrl(activeTask.value.id, type), '_blank')
+}
+
+async function saveResult() {
+  if (!activeTask.value || !result.value || saving.value) return
+  saving.value = true
+  saved.value = false
+  error.value = ''
+  try {
+    result.value = await updateResult(activeTask.value.id, result.value)
+    saved.value = true
+    window.setTimeout(() => { saved.value = false }, 2500)
+  } catch (exception) {
+    error.value = messageOf(exception)
+  } finally {
+    saving.value = false
+  }
+}
+
+function addTransaction() {
+  if (!result.value.transactions) result.value.transactions = []
+  result.value.transactions.push({
+    id: `MANUAL-${Date.now()}`, transactionDate: '', party: result.value.statement?.entityName || '',
+    counterparty: '', transactionNature: '', remarks: '', date: '', description: '',
+    counterpartyAccount: '', debit: null, credit: null, amount: null,
+    direction: '支出', balance: null, currency: 'CNY', category: '其他',
+    validations: [], manualReviewRequired: true, source: '人工新增',
+  })
+}
+
+function removeTransaction(index) {
+  if (window.confirm('确定删除这条流水吗？')) result.value.transactions.splice(index, 1)
+}
+
+function issueText(item) {
+  return item.validations?.map((issue) => issue.message).join('；') || '通过'
 }
 
 function statusLabel(status) {
@@ -208,7 +247,8 @@ onUnmounted(stopPolling)
             <div class="summary-grid">
               <div><span>解析片段</span><strong>{{ result.summary?.sectionCount || 0 }}</strong></div>
               <div><span>待人工复核</span><strong :class="{ danger: reviewCount }">{{ reviewCount }}</strong></div>
-              <div><span>主要模型</span><strong>PaddleOCR</strong></div>
+              <div><span>标准流水</span><strong>{{ transactions.length }}</strong></div>
+              <div><span>校验问题</span><strong :class="{ danger: transactionIssueCount }">{{ transactionIssueCount }}</strong></div>
             </div>
 
             <div class="download-bar">
@@ -216,6 +256,51 @@ onUnmounted(stopPolling)
               <button class="secondary" @click="download('json')">JSON</button>
               <button class="secondary" @click="download('txt')">TXT</button>
             </div>
+
+            <section v-if="result.statement" class="statement-panel">
+              <div class="panel-title">
+                <div><span class="eyebrow">统一主体信息</span><h3>账户与文件归属</h3></div>
+                <span class="validation-state" :class="result.validation?.status?.toLowerCase()">
+                  {{ result.validation?.status === 'PASS' ? '校验通过' : '需要复核' }}
+                </span>
+              </div>
+              <div class="metadata-form">
+                <label><span>主体名称</span><input v-model="result.statement.entityName" placeholder="待补充" /></label>
+                <label><span>银行</span><input v-model="result.statement.bankName" placeholder="待识别" /></label>
+                <label><span>账号</span><input v-model="result.statement.accountNumber" placeholder="待识别" /></label>
+                <label><span>账户类型</span><select v-model="result.statement.accountType"><option>对公</option><option>对私</option><option>未知</option></select></label>
+              </div>
+              <div v-if="result.validation?.issues?.length" class="validation-list">
+                <span v-for="issue in result.validation.issues" :key="issue.code">{{ issue.message }}</span>
+              </div>
+            </section>
+
+            <section class="transaction-panel">
+              <div class="panel-title">
+                <div><span class="eyebrow">标准化结果</span><h3>结构化银行流水</h3></div>
+                <div class="panel-actions"><button class="ghost" @click="addTransaction">新增一行</button><button class="primary compact-button" :disabled="saving" @click="saveResult">{{ saving ? '保存中…' : '保存修订' }}</button></div>
+              </div>
+              <p v-if="saved" class="save-success">修订结果已保存</p>
+              <div v-if="!transactions.length" class="empty compact-empty">未找到标准流水表头，可在此人工新增，或查看下方原始识别结果。</div>
+              <div v-else class="transaction-table-wrap">
+                <table class="transaction-table">
+                  <thead><tr><th>交易日期</th><th>交易方</th><th>对手方</th><th>交易性质</th><th>金额</th><th>备注</th><th>自动分类</th><th>校验</th><th></th></tr></thead>
+                  <tbody>
+                    <tr v-for="(item, index) in transactions" :key="item.id" :class="{ 'needs-review': item.manualReviewRequired }">
+                      <td><input v-model="item.transactionDate" type="date" /></td>
+                      <td><input v-model="item.party" /></td>
+                      <td><input v-model="item.counterparty" /></td>
+                      <td><input v-model="item.transactionNature" /></td>
+                      <td><input v-model.number="item.amount" type="number" step="0.01" /></td>
+                      <td><input v-model="item.remarks" /></td>
+                      <td><select v-model="item.category"><option v-for="name in ['工资薪酬','税费','采购付款','销售回款','费用报销','银行费用','利息','内部转账','融资','其他']" :key="name">{{ name }}</option></select></td>
+                      <td><span class="row-validation" :class="{ pass: !item.validations?.length }" :title="issueText(item)">{{ issueText(item) }}</span></td>
+                      <td><button class="delete row-delete" title="删除流水" @click="removeTransaction(index)">×</button></td>
+                    </tr>
+                  </tbody>
+                </table>
+              </div>
+            </section>
 
             <div v-if="result.warnings?.length" class="warning-box">
               <strong>处理警告</strong><span v-for="warning in result.warnings" :key="warning">{{ warning }}</span>

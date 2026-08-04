@@ -65,6 +65,14 @@ public class OcrTask {
         this.updatedAt = Instant.now();
     }
 
+    public void reviseResult(String resultJson) {
+        if (this.status != TaskStatus.COMPLETED) {
+            throw new IllegalStateException("只有已完成任务可以修订");
+        }
+        this.resultJson = resultJson;
+        this.updatedAt = Instant.now();
+    }
+
     public void failed(String message) {
         this.errorMessage = message == null ? "未知错误" : message.substring(0, Math.min(message.length(), 4000));
         this.status = TaskStatus.FAILED;

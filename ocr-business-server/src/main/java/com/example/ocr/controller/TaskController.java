@@ -15,6 +15,8 @@ import org.springframework.web.bind.annotation.DeleteMapping;
 import org.springframework.web.bind.annotation.GetMapping;
 import org.springframework.web.bind.annotation.PathVariable;
 import org.springframework.web.bind.annotation.PostMapping;
+import org.springframework.web.bind.annotation.PutMapping;
+import org.springframework.web.bind.annotation.RequestBody;
 import org.springframework.web.bind.annotation.RequestMapping;
 import org.springframework.web.bind.annotation.RequestParam;
 import org.springframework.web.bind.annotation.RequestPart;
@@ -60,6 +62,16 @@ public class TaskController {
     public JsonNode result(@PathVariable String id) throws IOException {
         OcrTask task = requireCompleted(id);
         return objectMapper.readTree(task.getResultJson());
+    }
+
+    @PutMapping(value = "/{id}/result", consumes = MediaType.APPLICATION_JSON_VALUE)
+    public JsonNode updateResult(@PathVariable String id, @RequestBody JsonNode result) throws IOException {
+        requireCompleted(id);
+        if (!result.isObject() || !result.path("transactions").isArray()) {
+            throw new IllegalArgumentException("修订结果必须包含 transactions 数组");
+        }
+        taskService.updateResult(id, objectMapper.writeValueAsString(result));
+        return result;
     }
 
     @GetMapping("/{id}/result.json")

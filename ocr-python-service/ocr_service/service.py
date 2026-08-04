@@ -7,6 +7,7 @@ from typing import Any
 from .config import Settings
 from .extractors import IMAGE_EXTENSIONS, Extractors
 from .ocr_engine import MultiModelOCREngine
+from .statement import normalize_statement
 
 
 class DocumentService:
@@ -50,6 +51,11 @@ class DocumentService:
             bool(item["metadata"].get("manualReviewRequired"))
             for item in sections
         )
+        normalized = normalize_statement(sections, full_text, original_name)
+        transaction_review_count = sum(
+            bool(item["manualReviewRequired"])
+            for item in normalized["transactions"]
+        )
         return {
             "originalFilename": original_name,
             "fileType": suffix.lstrip("."),
@@ -57,9 +63,12 @@ class DocumentService:
             "sections": sections,
             "warnings": warnings,
             "fullText": full_text,
+            **normalized,
             "summary": {
                 "sectionCount": len(sections),
-                "manualReviewCount": review_count,
+                "manualReviewCount": review_count + transaction_review_count,
+                "transactionCount": len(normalized["transactions"]),
+                "transactionReviewCount": transaction_review_count,
                 "primaryOcrModel": "paddleocr",
             },
             "createdAt": datetime.now(timezone.utc).isoformat(),

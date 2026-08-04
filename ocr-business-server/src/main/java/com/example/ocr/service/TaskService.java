@@ -6,6 +6,7 @@ import com.example.ocr.repository.OcrTaskRepository;
 import jakarta.annotation.PostConstruct;
 import org.springframework.beans.factory.annotation.Value;
 import org.springframework.stereotype.Service;
+import org.springframework.transaction.annotation.Transactional;
 import org.springframework.web.multipart.MultipartFile;
 
 import java.io.IOException;
@@ -81,6 +82,16 @@ public class TaskService {
         return repository.findTop30ByOrderByCreatedAtDesc().stream()
                 .map(TaskResponse::from)
                 .toList();
+    }
+
+    @Transactional
+    public void updateResult(String id, String resultJson) {
+        if (resultJson == null || resultJson.isBlank()) {
+            throw new IllegalArgumentException("修订结果不能为空");
+        }
+        OcrTask task = require(id);
+        task.reviseResult(resultJson);
+        repository.save(task);
     }
 
     public void delete(String id) throws IOException {

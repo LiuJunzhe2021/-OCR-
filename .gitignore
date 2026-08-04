@@ -36,6 +36,7 @@ tmp/
 .edge-pdf-profile/
 
 # Editors and operating systems
+.tools/
 .idea/
 .vscode/
 *.iml

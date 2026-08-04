@@ -61,7 +61,7 @@ select { height: 43px; min-width: 220px; border: 1px solid #cdd8e2; border-radiu
 .progress-panel { padding: 25px 0; text-align: center; color: #667b90; }
 .progress-track { height: 9px; overflow: hidden; background: #e8edf2; border-radius: 20px; }
 .progress-track span { display: block; height: 100%; background: linear-gradient(90deg, #0b6974, #25a98f); transition: width .4s ease; }
-.summary-grid { display: grid; grid-template-columns: repeat(3, 1fr); gap: 12px; }
+.summary-grid { display: grid; grid-template-columns: repeat(4, 1fr); gap: 12px; }
 .summary-grid div { padding: 15px; border-radius: 12px; background: #f4f7f9; display: flex; flex-direction: column; gap: 5px; }
 .summary-grid span { color: #718397; font-size: 11px; }
 .summary-grid strong { font-size: 20px; }
@@ -83,6 +83,31 @@ pre { margin: 0 0 15px; padding: 16px; max-height: 360px; overflow: auto; white-
 .candidate { margin-bottom: 10px; }
 .candidate strong { display: block; margin: 5px 0; font-size: 11px; color: #527086; }
 .error { color: #ad2634; background: #ffe8ea; border-radius: 8px; padding: 10px; font-size: 12px; }
+.statement-panel, .transaction-panel { margin: 18px 0; padding: 18px; border: 1px solid #dfe7ee; border-radius: 14px; background: #fbfcfd; }
+.panel-title { display: flex; justify-content: space-between; align-items: center; gap: 15px; margin-bottom: 15px; }
+.panel-title h3 { margin: 3px 0 0; font-size: 17px; }
+.panel-actions { display: flex; gap: 8px; }
+.compact-button { height: 36px; padding: 0 14px; }
+.validation-state { padding: 6px 10px; border-radius: 999px; font-size: 11px; font-weight: 800; }
+.validation-state.pass { color: #08755b; background: #dcf6eb; }
+.validation-state.review { color: #a35f00; background: #fff0c9; }
+.metadata-form { display: grid; grid-template-columns: repeat(4, 1fr); gap: 10px; }
+.metadata-form label { display: flex; flex-direction: column; gap: 5px; color: #667b90; font-size: 11px; font-weight: 700; }
+.metadata-form input, .metadata-form select { width: 100%; height: 38px; min-width: 0; border: 1px solid #cdd8e2; border-radius: 8px; padding: 0 9px; background: white; }
+.validation-list { display: flex; flex-wrap: wrap; gap: 6px; margin-top: 12px; }
+.validation-list span { padding: 5px 8px; border-radius: 6px; color: #87570a; background: #fff2cf; font-size: 11px; }
+.transaction-table-wrap { width: 100%; overflow: auto; border: 1px solid #e1e8ee; border-radius: 10px; }
+.transaction-table { width: 100%; min-width: 1050px; border-collapse: collapse; background: white; }
+.transaction-table th { position: sticky; top: 0; z-index: 1; padding: 9px; color: #5d7287; background: #edf3f6; text-align: left; font-size: 11px; }
+.transaction-table td { padding: 5px; border-top: 1px solid #edf1f4; }
+.transaction-table tr.needs-review { background: #fffaf0; }
+.transaction-table input, .transaction-table select { width: 100%; min-width: 90px; height: 34px; border: 1px solid transparent; border-radius: 6px; padding: 0 7px; color: #263b4e; background: transparent; }
+.transaction-table input:focus, .transaction-table select:focus { outline: none; border-color: #62a9a5; background: white; }
+.row-validation { display: block; max-width: 145px; overflow: hidden; color: #a35f00; font-size: 10px; text-overflow: ellipsis; white-space: nowrap; }
+.row-validation.pass { color: #08755b; }
+.row-delete { font-size: 18px; }
+.save-success { margin: -6px 0 10px; color: #08755b; font-size: 12px; }
+.compact-empty { padding: 22px; }
 
 @media (max-width: 980px) {
   .workspace { grid-template-columns: 1fr; }
@@ -97,6 +122,8 @@ pre { margin: 0 0 15px; padding: 16px; max-height: 360px; overflow: auto; white-
   .form-row { grid-template-columns: 1fr; }
   select, .primary { width: 100%; }
   .summary-grid { grid-template-columns: 1fr; }
+  .metadata-form { grid-template-columns: 1fr; }
+  .panel-title { align-items: flex-start; flex-direction: column; }
   .task-row { grid-template-columns: 42px 1fr auto; }
   .task-row .delete { display: none; }
 }
