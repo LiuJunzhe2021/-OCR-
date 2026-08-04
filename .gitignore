@@ -1,0 +1,49 @@
+# Secrets and local configuration
+.env
+.env.*
+!.env.example
+*.pem
+*.key
+
+# Python
+__pycache__/
+*.py[cod]
+.pytest_cache/
+.mypy_cache/
+.ruff_cache/
+.venv/
+venv/
+.pdfdeps/
+
+# Node / Vue
+node_modules/
+dist/
+.vite/
+*.local
+
+# Java / Maven
+target/
+*.class
+
+# Local runtime data
+*.mv.db
+*.trace.db
+uploads/
+temp/
+tmp/
+
+# Browser automation profiles
+.edge-pdf-profile/
+
+# Editors and operating systems
+.idea/
+.vscode/
+*.iml
+.DS_Store
+Thumbs.db
+
+# Logs
+*.log
+npm-debug.log*
+yarn-debug.log*
+yarn-error.log*
