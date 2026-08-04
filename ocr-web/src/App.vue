@@ -2,6 +2,7 @@
 import { computed, onMounted, onUnmounted, ref } from 'vue'
 import { createTask, deleteTask, downloadUrl, getResult, getTask, listTasks, updateResult } from './api'
 import ClassifyPanel from './components/ClassifyPanel.vue'
+import DbViewPanel from './components/DbViewPanel.vue'
 
 const selectedFile = ref(null)
 const mode = ref('auto')
@@ -308,6 +309,8 @@ onUnmounted(stopPolling)
             </div>
 
             <ClassifyPanel :task-id="activeTask.id" />
+
+            <DbViewPanel :task-id="activeTask.id" />
 
             <div class="section-list">
               <details v-for="(item, index) in result.sections" :key="`${item.source}-${index}`" :open="index === 0">
