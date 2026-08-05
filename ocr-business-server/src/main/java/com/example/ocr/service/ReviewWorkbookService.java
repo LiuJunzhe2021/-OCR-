@@ -45,6 +45,8 @@ public class ReviewWorkbookService {
             CellStyle percent = workbook.createCellStyle();
             percent.setDataFormat(workbook.createDataFormat().getFormat("0.00%"));
 
+            DueDiligenceReportSheet.create(workbook, root);
+
             Sheet review = workbook.createSheet("识别结果");
             String[] headers = {"序号", "来源", "解析/识别方式", "原始识别文本", "修订文本（可覆盖公式）", "置信度", "需人工复核", "复核状态", "备注", "校验结果"};
             writeHeader(review, headers, header);

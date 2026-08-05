@@ -254,7 +254,7 @@ onUnmounted(stopPolling)
             </div>
 
             <div class="download-bar">
-              <button class="excel" @click="download('xlsx')">下载人工复核 Excel</button>
+              <button class="excel" @click="download('xlsx')">下载银行流水尽调报告</button>
               <button class="secondary" @click="download('json')">JSON</button>
               <button class="secondary" @click="download('txt')">TXT</button>
             </div>

@@ -100,7 +100,7 @@ public class TaskController {
         OcrTask task = requireCompleted(id);
         return download(
                 workbookService.create(task),
-                stem(task.getOriginalFilename()) + "_人工复核.xlsx",
+                stem(task.getOriginalFilename()) + "_银行流水尽调报告.xlsx",
                 MediaType.parseMediaType("application/vnd.openxmlformats-officedocument.spreadsheetml.sheet")
         );
     }

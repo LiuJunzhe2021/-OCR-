@@ -19,6 +19,9 @@ class ReviewWorkbookServiceTest {
         byte[] bytes = new ReviewWorkbookService(new ObjectMapper()).create(task);
 
         try (var workbook = WorkbookFactory.create(new ByteArrayInputStream(bytes))) {
+            assertThat(workbook.getSheetAt(0).getSheetName()).isEqualTo("现金流尽调报告");
+            assertThat(workbook.getSheet("现金流尽调报告").getRow(0).getCell(1).getStringCellValue())
+                    .isEqualTo("银行流水尽调报告");
             assertThat(workbook.getSheet("识别结果").getRow(1).getCell(4).getCellFormula()).isEqualTo("D2");
             assertThat(workbook.getSheet("质量汇总").getRow(6).getCell(1).getCellFormula()).contains("B5/B4");
             assertThat(workbook.getSheet("候选模型")).isNotNull();
