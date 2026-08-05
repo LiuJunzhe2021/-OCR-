@@ -5,12 +5,14 @@ import com.example.ocr.domain.OcrTransaction;
 import com.example.ocr.service.TransactionSplitService;
 import org.springframework.http.ResponseEntity;
 import org.springframework.web.bind.annotation.GetMapping;
+import org.springframework.web.bind.annotation.DeleteMapping;
 import org.springframework.web.bind.annotation.PatchMapping;
 import org.springframework.web.bind.annotation.PathVariable;
 import org.springframework.web.bind.annotation.PostMapping;
 import org.springframework.web.bind.annotation.RequestBody;
 import org.springframework.web.bind.annotation.RequestMapping;
 import org.springframework.web.bind.annotation.RestController;
+import org.springframework.web.bind.annotation.PutMapping;
 
 import java.math.BigDecimal;
 import java.time.LocalDate;
@@ -40,6 +42,12 @@ public class TransactionController {
         return a != null ? ResponseEntity.ok(a) : ResponseEntity.notFound().build();
     }
 
+    /** 更新任务归属的主体与账户信息。 */
+    @PutMapping("/tasks/{taskId}/account")
+    public OcrAccount updateAccount(@PathVariable String taskId, @RequestBody OcrAccount body) {
+        return splitService.updateAccount(taskId, body);
+    }
+
     /** 单行更新（人工校正后保存） */
     @PatchMapping("/transactions/{id}")
     public OcrTransaction update(@PathVariable String id, @RequestBody Map<String, Object> body) {
@@ -55,6 +63,13 @@ public class TransactionController {
             patch.setTransactionDate(LocalDate.parse((String) body.get("transactionDate")));
         }
         return splitService.updateTransaction(id, patch);
+    }
+
+    /** 删除一条已结构化的流水。 */
+    @DeleteMapping("/transactions/{id}")
+    public ResponseEntity<Void> deleteTransaction(@PathVariable String id) {
+        splitService.deleteTransaction(id);
+        return ResponseEntity.noContent().build();
     }
 
     /** 手动重新拆分（前端按钮触发） */

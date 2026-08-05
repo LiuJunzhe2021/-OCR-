@@ -33,8 +33,11 @@ export const getTransactions = (taskId) =>
   api.get(`/tasks/${taskId}/transactions`).then(({ data }) => data)
 export const getAccount = (taskId) =>
   api.get(`/tasks/${taskId}/account`).then(({ data }) => data)
+export const updateAccount = (taskId, body) =>
+  api.put(`/tasks/${taskId}/account`, body).then(({ data }) => data)
 export const updateTransaction = (id, body) =>
   api.patch(`/transactions/${id}`, body).then(({ data }) => data)
+export const deleteTransaction = (id) => api.delete(`/transactions/${id}`)
 
 // ===== LLM AI 辅助 API =====
 export const classifyTransactions = (taskId, body) =>

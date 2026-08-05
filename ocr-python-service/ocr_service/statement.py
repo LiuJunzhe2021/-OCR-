@@ -9,17 +9,28 @@ from typing import Any
 HEADER_ALIASES = {
     "date": ("交易日期", "交易日", "记账日期", "入账日期", "发生日期", "日期"),
     "time": ("交易时间", "交易时刻", "时间"),
-    "description": ("摘要", "用途", "交易摘要", "附言", "备注", "交易说明"),
+    "description": ("摘要", "用途", "交易摘要", "业务摘要", "附言", "备注", "交易说明", "交易信息"),
     "transactionNature": ("交易性质", "交易类型", "业务类型", "交易类别"),
-    "counterparty": ("对方户名", "对方账户名称", "对方名称", "交易对手", "收款人", "付款人", "收/付方名称", "收付方名称"),
+    "counterparty": ("对方户名", "对方账户名称", "对方名称", "交易对手", "交易对手方", "收款人", "付款人", "收/付方名称", "收付方名称"),
     "counterpartyAccount": ("对方账号", "对方账户", "收款账号", "付款账号", "收/付方帐号", "收/付方账号", "收付方帐号"),
-    "debit": ("支出金额", "借方发生额", "借方金额", "付款金额", "支出"),
-    "credit": ("收入金额", "贷方发生额", "贷方金额", "收款金额", "收入"),
+    "debit": ("支出金额", "流出金额", "流出总额", "借方发生额", "借方金额", "付款金额", "支出", "流出"),
+    "credit": ("收入金额", "流入金额", "流入总额", "贷方发生额", "贷方金额", "收款金额", "收入", "流入"),
     "amount": ("交易金额", "发生额", "金额"),
     "direction": ("收支方向", "借贷标志", "交易方向", "借贷方向"),
     "balance": ("账户余额", "交易后余额", "余额"),
     "currency": ("币种", "货币"),
 }
+
+# 用于识别“是不是交易流水”的最低语义要求。统计报表中也常出现流入/流出，
+# 但没有逐笔交易日期，不能将它们伪装成流水记录。
+MONEY_FIELDS = {"debit", "credit", "amount"}
+DETAIL_FIELDS = {"description", "counterparty", "counterpartyAccount", "transactionNature"}
+
+GENERIC_HEADER_WORDS = (
+    "名称", "账号", "账户", "银行", "日期", "时间", "金额", "余额", "摘要",
+    "类型", "分类", "方向", "合计", "占比", "笔数", "均值", "范围", "质量",
+    "风险", "来源", "详情", "性质", "本方", "对方", "流入", "流出", "借方", "贷方",
+)
 
 BANKS = (
     "中国工商银行", "中国农业银行", "中国银行", "中国建设银行", "交通银行",
@@ -147,32 +158,139 @@ def _issues(transaction: dict[str, Any]) -> list[dict[str, str]]:
     return issues
 
 
+def _header_mapping(row: list[Any]) -> dict[int, str]:
+    """将任意银行模板的表头映射到统一交易字段。"""
+    mapping: dict[int, str] = {}
+    for column, value in enumerate(row):
+        field = _field_for(value)
+        if field and field not in mapping.values():
+            mapping[column] = field
+    return mapping
+
+
+def _is_transaction_header(mapping: dict[int, str]) -> bool:
+    fields = set(mapping.values())
+    # 日期 + 金额是逐笔流水不可缺少的结构特征；再要求一个明细语义列，避免将
+    # “月度流入/流出统计”误识别成交易流水。
+    return "date" in fields and bool(fields & MONEY_FIELDS) and bool(fields & DETAIL_FIELDS)
+
+
+def _looks_like_generic_header(row: list[Any]) -> bool:
+    values = [str(value).strip() for value in row if str(value or "").strip()]
+    if len(values) < 2:
+        return False
+    hits = sum(any(word in value for word in GENERIC_HEADER_WORDS) or bool(re.fullmatch(r"20\d{2}[/.-]\d{1,2}", value)) for value in values)
+    numeric = sum(_decimal(value) is not None and not re.search(r"[\u4e00-\u9fff]", value) for value in values)
+    return hits >= 2 and hits >= numeric
+
+
+def _table_type(headers: list[str], title: str) -> str:
+    text = " ".join([title, *headers])
+    mapping = _header_mapping(headers)
+    if _is_transaction_header(mapping):
+        return "transaction_detail"
+    if ("本方账号" in text or "账号" in headers) and ("所属银行" in text or "本方银行" in text):
+        return "account_summary"
+    if "对方名称" in text or "对手方" in text or "流入方" in text or "流出方" in text:
+        return "counterparty_analysis"
+    if any(re.fullmatch(r"20\d{2}[/.-]\d{1,2}", item) for item in headers):
+        return "monthly_summary"
+    if "分类" in text and ("金额" in text or "合计" in text):
+        return "category_summary"
+    if "质量" in text or "校验" in text or "风险" in text:
+        return "quality_or_risk"
+    return "structured_table"
+
+
+def detect_structured_tables(sections: list[dict[str, Any]]) -> list[dict[str, Any]]:
+    """发现工作表内的多个表，而不是假定一张 sheet 只有一张流水表。"""
+    detected: list[dict[str, Any]] = []
+    for section_index, section in enumerate(sections):
+        rows = section.get("tableRows") or []
+        candidates = [index for index, row in enumerate(rows) if _looks_like_generic_header(row)]
+        for position, header_index in enumerate(candidates):
+            next_header = candidates[position + 1] if position + 1 < len(candidates) else len(rows)
+            header = [str(value).strip() for value in rows[header_index]]
+            # 最近的单值/章节行通常就是表名；限制回看距离避免串到上一节。
+            title = ""
+            for prior in range(header_index - 1, max(-1, header_index - 4), -1):
+                nonempty = [str(v).strip() for v in rows[prior] if str(v or "").strip()]
+                if 1 <= len(nonempty) <= 2:
+                    title = " ".join(nonempty)
+                    break
+            data_rows = []
+            for row in rows[header_index + 1:next_header]:
+                values = [str(value).strip() for value in row]
+                if not any(values) or any(value == "总计" for value in values):
+                    continue
+                data_rows.append(values)
+            detected.append({
+                "id": f"T{len(detected) + 1}",
+                "source": section.get("source", ""),
+                "title": title,
+                "type": _table_type(header, title),
+                "headerRow": header_index + 1,
+                "headers": header,
+                "rows": data_rows,
+                "rowCount": len(data_rows),
+            })
+    return detected
+
+
+def _detected_accounts(tables: list[dict[str, Any]]) -> list[dict[str, Any]]:
+    accounts: list[dict[str, Any]] = []
+    seen: set[tuple[str, str]] = set()
+    for table in tables:
+        if table["type"] != "account_summary":
+            continue
+        headers = table["headers"]
+        for row in table["rows"]:
+            record = {headers[i]: row[i] for i in range(min(len(headers), len(row))) if headers[i]}
+            account = record.get("账号") or record.get("本方账号") or ""
+            bank = record.get("所属银行") or record.get("本方银行") or ""
+            entity = record.get("本方名称") or table.get("title", "")
+            period = record.get("数据时间范围") or record.get("数据时间") or ""
+            # 脱敏账号可能是“招行@姓名@”一类非纯数字标识。
+            plausible_account = 4 <= len(account) <= 40 and not bool(re.search(r"\s", account))
+            if not account or not bank or not plausible_account or account == "总计" or (account, entity) in seen:
+                continue
+            seen.add((account, entity))
+            dates = re.findall(r"20\d{2}[./-]\d{1,2}[./-]\d{1,2}", period)
+            accounts.append({
+                "entityName": entity,
+                "accountNumber": account,
+                "bankName": bank,
+                "periodStart": _date(dates[0]) if dates else None,
+                "periodEnd": _date(dates[1]) if len(dates) > 1 else None,
+            })
+    return accounts
+
+
 def normalize_statement(sections: list[dict[str, Any]], full_text: str, source_name: str = "") -> dict[str, Any]:
     transactions: list[dict[str, Any]] = []
     validation_issues: list[dict[str, Any]] = []
     detected_tables = 0
     formula_count = 0
     statement = _statement_info(full_text, source_name)
+    structured_tables = detect_structured_tables(sections)
+    accounts = _detected_accounts(structured_tables)
+    if len(accounts) == 1:
+        statement.update(accounts[0])
 
     for section_index, section in enumerate(sections):
         rows = section.get("tableRows") or []
         formula_count += len(section.get("metadata", {}).get("formulaCells", []))
-        best_header: tuple[int, dict[int, str]] | None = None
-        for row_index, row in enumerate(rows[:30]):
-            mapping: dict[int, str] = {}
-            for column, value in enumerate(row):
-                field = _field_for(value)
-                # 银行模板常同时包含“摘要/业务摘要/其它摘要”等近义列。
-                # 优先保留最靠前的主字段，避免后面的空列覆盖有效值。
-                if field and field not in mapping.values():
-                    mapping[column] = field
-            if len(set(mapping.values())) >= 2 and (best_header is None or len(mapping) > len(best_header[1])):
-                best_header = (row_index, mapping)
-        if best_header is None:
+        headers = [
+            (row_index, _header_mapping(row))
+            for row_index, row in enumerate(rows)
+            if _is_transaction_header(_header_mapping(row))
+        ]
+        if not headers:
             continue
-        detected_tables += 1
-        header_index, mapping = best_header
-        for source_row, row in enumerate(rows[header_index + 1 :], header_index + 2):
+        detected_tables += len(headers)
+        for header_position, (header_index, mapping) in enumerate(headers):
+          end_index = headers[header_position + 1][0] if header_position + 1 < len(headers) else len(rows)
+          for source_row, row in enumerate(rows[header_index + 1:end_index], header_index + 2):
             values = {field: (row[column] if column < len(row) else "") for column, field in mapping.items()}
             if not any(str(value).strip() for value in values.values()):
                 continue
@@ -196,12 +314,17 @@ def normalize_statement(sections: list[dict[str, Any]], full_text: str, source_n
                 signed_amount = credit if credit is not None else (-debit if debit is not None else None)
             description = str(values.get("description", "")).strip()
             counterparty = str(values.get("counterparty", "")).strip()
+            # 标题行、合计行和后续非流水子表不能污染交易结果。
+            if not parsed_date or (debit is None and credit is None and amount is None):
+                continue
+            inferred_category = _category(description, counterparty)
+            nature = str(values.get("transactionNature", "")).strip() or inferred_category
             transaction = {
                 "id": f"S{section_index + 1}-R{source_row}",
                 # 六个跨模板统一字段。源材料不存在时保持空值。
                 "transactionDate": parsed_date,
                 "party": statement["entityName"],
-                "transactionNature": str(values.get("transactionNature", "")).strip(),
+                "transactionNature": nature,
                 "remarks": description,
                 "date": parsed_date,
                 "time": str(values.get("time", "")).strip(),
@@ -214,7 +337,7 @@ def normalize_statement(sections: list[dict[str, Any]], full_text: str, source_n
                 "direction": "收入" if signed_amount is not None and signed_amount >= 0 else "支出",
                 "balance": _money(_decimal(values.get("balance"))),
                 "currency": str(values.get("currency", "")).strip() or "CNY",
-                "category": _category(description, counterparty),
+                "category": inferred_category,
                 "source": section.get("source", ""),
                 "sourceRow": source_row,
                 "originalRow": [str(item) for item in row],
@@ -223,12 +346,14 @@ def normalize_statement(sections: list[dict[str, Any]], full_text: str, source_n
             transaction["manualReviewRequired"] = bool(transaction["validations"])
             transactions.append(transaction)
 
-    if not statement["accountNumber"]:
+    if not statement["accountNumber"] and not accounts:
         validation_issues.append({"code": "ACCOUNT_NOT_FOUND", "level": "WARNING", "message": "未识别到账户号码"})
-    elif not 8 <= len(statement["accountNumber"]) <= 30:
+    elif not accounts and not 8 <= len(statement["accountNumber"]) <= 30:
         validation_issues.append({"code": "INVALID_ACCOUNT", "level": "ERROR", "message": "账户号码长度异常"})
-    if detected_tables == 0:
+    if detected_tables == 0 and not structured_tables:
         validation_issues.append({"code": "HEADER_NOT_FOUND", "level": "ERROR", "message": "未找到可识别的流水表头"})
+    elif detected_tables == 0:
+        validation_issues.append({"code": "NO_TRANSACTION_DETAIL", "level": "INFO", "message": "文件包含结构化分析表，但不包含逐笔流水明细"})
     if formula_count:
         validation_issues.append({"code": "FORMULA_DETECTED", "level": "WARNING", "message": f"原文件检测到 {formula_count} 个公式单元格"})
 
@@ -246,12 +371,15 @@ def normalize_statement(sections: list[dict[str, Any]], full_text: str, source_n
     transaction_issue_count = sum(len(item["validations"]) for item in transactions)
     return {
         "statement": statement,
+        "accounts": accounts,
         "transactions": transactions,
+        "detectedTables": structured_tables,
         "validation": {
             "status": "PASS" if not validation_issues and transaction_issue_count == 0 else "REVIEW",
             "issues": validation_issues,
             "transactionIssueCount": transaction_issue_count,
             "formulaCount": formula_count,
             "detectedTableCount": detected_tables,
+            "structuredTableCount": len(structured_tables),
         },
     }

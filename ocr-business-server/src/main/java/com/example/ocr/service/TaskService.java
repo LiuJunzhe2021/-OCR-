@@ -104,6 +104,7 @@ public class TaskService {
     public void delete(String id) throws IOException {
         OcrTask task = require(id);
         Files.deleteIfExists(Path.of(task.getUploadPath()));
+        splitService.deleteTaskData(id);
         repository.delete(task);
     }
 

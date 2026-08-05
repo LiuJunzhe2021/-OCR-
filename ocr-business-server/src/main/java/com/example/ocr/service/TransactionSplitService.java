@@ -114,6 +114,34 @@ public class TransactionSplitService {
     }
 
     @Transactional
+    public OcrAccount updateAccount(String taskId, OcrAccount patch) {
+        OcrAccount account = accountRepo.findByTaskId(taskId)
+                .orElseThrow(() -> new IllegalArgumentException("账户不存在: " + taskId));
+        account.setEntityName(patch.getEntityName());
+        account.setBankName(patch.getBankName());
+        account.setAccountNumber(patch.getAccountNumber());
+        account.setAccountType(patch.getAccountType());
+        account.setCurrency(patch.getCurrency());
+        account.setPeriodStart(patch.getPeriodStart());
+        account.setPeriodEnd(patch.getPeriodEnd());
+        return accountRepo.save(account);
+    }
+
+    @Transactional
+    public void deleteTransaction(String id) {
+        if (!transactionRepo.existsById(id)) {
+            throw new IllegalArgumentException("交易不存在: " + id);
+        }
+        transactionRepo.deleteById(id);
+    }
+
+    @Transactional
+    public void deleteTaskData(String taskId) {
+        transactionRepo.deleteByTaskId(taskId);
+        accountRepo.deleteByTaskId(taskId);
+    }
+
+    @Transactional
     public OcrTransaction updateTransaction(String id, OcrTransaction patch) {
         OcrTransaction tr = transactionRepo.findById(id)
                 .orElseThrow(() -> new IllegalArgumentException("交易不存在: " + id));

@@ -1,0 +1,15 @@
+.table-notice {
+  margin: 14px 20px 0;
+  color: #6d5b24;
+  background: #fff8df;
+}
+
+.detected-tables {
+  display: grid;
+  gap: 14px;
+  margin-top: 14px;
+}
+
+.detected-table .table-scroll { max-height: 420px; }
+.detected-table td { height: 44px; white-space: nowrap; }
+.detected-table th { position: sticky; top: 0; z-index: 1; }

@@ -48,9 +48,30 @@ def test_cmb_template_uses_transaction_day_and_statement_period():
     assert result["transactions"][0]["date"] == "2021-01-12"
     assert result["transactions"][0]["transactionDate"] == "2021-01-12"
     assert result["transactions"][0]["party"] == "小米科技有限责任公司"
-    assert result["transactions"][0]["transactionNature"] == ""
+    assert result["transactions"][0]["transactionNature"] == "其他"
     assert result["transactions"][0]["remarks"] == "划款-往来款"
     assert result["transactions"][0]["time"] == "080024"
     assert result["transactions"][0]["counterparty"] == "客户甲"
     assert result["transactions"][0]["amount"] == 1000000.0
     assert result["transactions"][1]["amount"] == -41186.38
+
+
+def test_report_summary_is_not_misread_as_transaction_detail():
+    sections = [{
+        "source": "Excel工作表：报告",
+        "metadata": {},
+        "tableRows": [
+            ["前10大流入方"],
+            ["对方名称", "流入总额", "流入笔数", "2024/01"],
+            ["客户甲", "100000", "5", "20000"],
+            ["账户流水"],
+            ["交易日期", "摘要", "对方名称", "交易金额", "收支方向"],
+            ["2024-01-02", "采购材料", "供应商乙", "300", "支出"],
+        ],
+    }]
+    result = normalize_statement(sections, "银行流水分析报告")
+    assert len(result["detectedTables"]) == 2
+    assert result["detectedTables"][0]["type"] == "counterparty_analysis"
+    assert len(result["transactions"]) == 1
+    assert result["transactions"][0]["amount"] == -300.0
+    assert result["transactions"][0]["transactionNature"] == "采购付款"
