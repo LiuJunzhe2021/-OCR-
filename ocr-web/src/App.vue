@@ -2,6 +2,7 @@
 import { computed, onMounted, onUnmounted, reactive, ref } from 'vue'
 import { ArrowRight, BarChart3, Building2, CalendarDays, CheckCircle2, ChevronDown, CircleAlert, Download, FileSpreadsheet, Files, FilterX, LocateFixed, Pencil, Plus, RefreshCw, Search, Trash2, UploadCloud, UserRound, Users, WalletCards, X } from 'lucide-vue-next'
 import EChart from './components/EChart.vue'
+import ClassifyPanel from './components/ClassifyPanel.vue'
 import { createTask, deleteTask, deleteTransaction, downloadUrl, getAccount, getResult, getTask, getTransactions, listTasks, updateAccount, updateResult, updateTransaction } from './api'
 
 const view = ref('records')
@@ -53,9 +54,11 @@ const filteredRows = computed(() => sourceRows.value.filter(row => {
 }))
 const pageCount = computed(() => Math.max(1, Math.ceil(filteredRows.value.length / txPageSize)))
 const pagedRows = computed(() => filteredRows.value.slice((txPage.value - 1) * txPageSize, txPage.value * txPageSize))
-const totalIn = computed(() => sourceRows.value.filter(isIncome).reduce((n, r) => n + Math.abs(Number(r.amount) || 0), 0))
-const totalOut = computed(() => sourceRows.value.filter(r => !isIncome(r)).reduce((n, r) => n + Math.abs(Number(r.amount) || 0), 0))
+const totalIn = computed(() => sourceRows.value.length ? sourceRows.value.filter(isIncome).reduce((n, r) => n + Math.abs(Number(r.amount) || 0), 0) : Number(result.value?.analysis?.totalInflow) || 0)
+const totalOut = computed(() => sourceRows.value.length ? sourceRows.value.filter(r => !isIncome(r)).reduce((n, r) => n + Math.abs(Number(r.amount) || 0), 0) : Number(result.value?.analysis?.totalOutflow) || 0)
 const reviewRows = computed(() => sourceRows.value.filter(r => r.manualReviewRequired || r.validations?.length).length)
+const isSummaryReport = computed(() => !sourceRows.value.length && Boolean(result.value?.analysis))
+const hasAnalysisData = computed(() => sourceRows.value.length > 0 || (result.value?.analysis?.monthly?.length || result.value?.analysis?.categories?.length || result.value?.analysis?.counterparties?.length))
 const entities = computed(() => [...new Set(tasks.value.map(t => t.account?.entityName).filter(Boolean))])
 const counterparties = computed(() => {
   const groups = new Map()
@@ -78,20 +81,20 @@ const sourceSection = computed(() => {
 
 const monthlyOption = computed(() => {
   const bucket = {}
-  sourceRows.value.forEach(row => {
-    const month = (row.transactionDate || row.date || '').slice(0, 7) || '未知'
-    bucket[month] ||= [0, 0]
-    bucket[month][isIncome(row) ? 0 : 1] += Math.abs(Number(row.amount) || 0)
+  if (sourceRows.value.length) sourceRows.value.forEach(row => {
+    const month = (row.transactionDate || row.date || '').slice(0, 7)
+    if (month) { bucket[month] ||= [0, 0]; bucket[month][isIncome(row) ? 0 : 1] += Math.abs(Number(row.amount) || 0) }
   })
+  else (result.value?.analysis?.monthly || []).forEach(row => { bucket[row.month] = [Number(row.inflow) || 0, Number(row.outflow) || 0] })
   const months = Object.keys(bucket).sort()
   return chartBase({ tooltip: { trigger: 'axis' }, legend: { data: ['流入', '流出'], top: 2 }, xAxis: { type: 'category', data: months }, yAxis: { type: 'value', axisLabel: { formatter: value => shortMoney(value) } }, series: [{ name: '流入', type: 'line', smooth: true, data: months.map(m => bucket[m][0]), itemStyle: { color: '#16a394' }, areaStyle: { color: 'rgba(22,163,148,.08)' } }, { name: '流出', type: 'line', smooth: true, data: months.map(m => bucket[m][1]), itemStyle: { color: '#ee7b55' } }] })
 })
 const categoryOption = computed(() => {
-  const data = aggregate(sourceRows.value, r => r.category || '其他').slice(0, 7)
+  const data = (sourceRows.value.length ? aggregate(sourceRows.value, r => r.category || '其他') : (result.value?.analysis?.categories || []).map(row => [row.name, (Number(row.inflow) || 0) + (Number(row.outflow) || 0)]).sort((a,b) => b[1] - a[1])).slice(0, 7)
   return chartBase({ tooltip: { trigger: 'item', formatter: '{b}<br/>金额：{c} 元（{d}%）' }, legend: { type: 'scroll', bottom: 0 }, series: [{ type: 'pie', radius: ['48%', '72%'], center: ['50%', '43%'], label: { formatter: '{d}%' }, data: data.map(([name, value]) => ({ name, value })) }] })
 })
 const counterpartyOption = computed(() => {
-  const data = aggregate(sourceRows.value, r => r.counterpartyName || r.counterparty || '未知对手方').slice(0, 6).reverse()
+  const data = (sourceRows.value.length ? aggregate(sourceRows.value, r => r.counterpartyName || r.counterparty || '未知对手方') : (result.value?.analysis?.counterparties || []).map(row => [row.name, (Number(row.inflow) || 0) + (Number(row.outflow) || 0)]).sort((a,b) => b[1] - a[1])).slice(0, 6).reverse()
   return chartBase({ tooltip: { trigger: 'axis' }, grid: { left: 16, right: 22, top: 10, bottom: 10, containLabel: true }, xAxis: { type: 'value', axisLabel: { formatter: value => shortMoney(value) } }, yAxis: { type: 'category', data: data.map(x => x[0]), axisLabel: { width: 100, overflow: 'truncate' } }, series: [{ type: 'bar', data: data.map(x => x[1]), barWidth: 14, itemStyle: { color: '#3796d9', borderRadius: [0, 3, 3, 0] } }] })
 })
 const heatOption = computed(() => {
@@ -149,6 +152,7 @@ async function openTask(task, target = 'records') {
     result.value = values[0].value || null; dbRows.value = values[1].value || []; account.value = values[2].value || result.value?.statement || null; resetTxFilters()
   } else if (task.status !== 'FAILED') startPolling(task.id)
 }
+async function refreshActiveTask() { if (activeTask.value) await openTask(activeTask.value, view.value) }
 function startPolling(id) { pollTimer = setInterval(async () => { const task = await getTask(id); activeTask.value = task; await refresh(); if (task.status === 'COMPLETED') { clearInterval(pollTimer); await openTask(task, view.value) } }, 1500) }
 async function upload() {
   if (!selectedFile.value) return
@@ -253,8 +257,10 @@ onUnmounted(() => clearInterval(pollTimer))
 
     <main v-else class="report-page">
       <section class="report-toolbar"><div><span class="report-label">分析对象</span><strong>{{ account?.entityName || activeTask?.originalFilename }}</strong><span class="period">{{ account?.periodStart || '数据起始日' }} 至 {{ account?.periodEnd || '数据截止日' }}</span></div><button class="button primary" @click="downloadReport"><Download :size="16" />导出尽调报告</button></section>
-      <section class="metric-grid"><article><span>资金流入</span><strong>{{ money(totalIn) }}</strong><small><i class="dot teal" />{{ sourceRows.filter(isIncome).length }} 笔收入</small></article><article><span>资金流出</span><strong>{{ money(totalOut) }}</strong><small><i class="dot coral" />{{ sourceRows.filter(r => !isIncome(r)).length }} 笔支出</small></article><article><span>净现金流</span><strong :class="totalIn - totalOut < 0 ? 'expense-text' : 'income-text'">{{ money(totalIn - totalOut) }}</strong><small>流入 / 流出 {{ totalOut ? (totalIn / totalOut).toFixed(2) : '-' }}</small></article><article><span>风险提示</span><strong>{{ reviewRows }}</strong><small><i class="dot amber" />待人工复核记录</small></article></section>
-      <section class="chart-grid"><article class="chart-card wide"><div class="chart-title"><div><h3>月度收支趋势</h3><p>识别资金波动与跨期异常</p></div></div><EChart :option="monthlyOption" /></article><article class="chart-card"><div class="chart-title"><div><h3>收支构成</h3><p>按交易分类汇总</p></div></div><EChart :option="categoryOption" /></article><article class="chart-card"><div class="chart-title"><div><h3>核心交易对手</h3><p>按累计交易金额排序</p></div></div><EChart :option="counterpartyOption" /></article><article class="chart-card wide"><div class="chart-title"><div><h3>交易活跃度热力图</h3><p>按星期与月内周次观察交易集中情况</p></div></div><EChart :option="heatOption" /></article></section>
+      <section class="metric-grid"><article><span>资金流入</span><strong>{{ money(totalIn) }}</strong><small><i class="dot teal" />{{ isSummaryReport ? '来源：汇总分析表' : `${sourceRows.filter(isIncome).length} 笔收入` }}</small></article><article><span>资金流出</span><strong>{{ money(totalOut) }}</strong><small><i class="dot coral" />{{ isSummaryReport ? '来源：汇总分析表' : `${sourceRows.filter(r => !isIncome(r)).length} 笔支出` }}</small></article><article><span>净现金流</span><strong :class="totalIn - totalOut < 0 ? 'expense-text' : 'income-text'">{{ money(totalIn - totalOut) }}</strong><small>流入 / 流出 {{ totalOut ? (totalIn / totalOut).toFixed(2) : '-' }}</small></article><article><span>风险提示</span><strong>{{ reviewRows }}</strong><small><i class="dot amber" />{{ isSummaryReport ? '逐笔风险需原始流水支持' : '待人工复核记录' }}</small></article></section>
+      <ClassifyPanel v-if="activeTask?.id" :task-id="activeTask.id" :transaction-count="sourceRows.length" @completed="refreshActiveTask" />
+      <section v-if="hasAnalysisData" class="chart-grid"><article class="chart-card wide"><div class="chart-title"><div><h3>月度收支趋势</h3><p>识别资金波动与跨期异常</p></div></div><EChart :option="monthlyOption" /></article><article class="chart-card"><div class="chart-title"><div><h3>收支构成</h3><p>按交易分类汇总</p></div></div><EChart :option="categoryOption" /></article><article class="chart-card"><div class="chart-title"><div><h3>核心交易对手</h3><p>按累计交易金额排序</p></div></div><EChart :option="counterpartyOption" /></article><article v-if="sourceRows.length" class="chart-card wide"><div class="chart-title"><div><h3>交易活跃度热力图</h3><p>按星期与月内周次观察交易集中情况</p></div></div><EChart :option="heatOption" /></article></section>
+      <div v-else class="content-panel empty"><BarChart3 :size="36" /><strong>暂无可视化数据</strong><span>请上传包含逐笔流水或月度/分类汇总表的文件</span></div>
     </main>
 
     <div v-if="editAccountOpen" class="modal-mask" @click.self="editAccountOpen = false"><form class="modal" @submit.prevent="saveAccount"><div class="modal-head"><div><h2>编辑主体与账户</h2><p>修改文件的归属和账户基础信息</p></div><button type="button" class="icon-button" @click="editAccountOpen = false"><X /></button></div><div class="form-grid"><label><span>主体名称</span><input v-model="account.entityName" /></label><label><span>开户银行</span><input v-model="account.bankName" /></label><label><span>银行账号</span><input v-model="account.accountNumber" /></label><label><span>币种</span><select v-model="account.currency"><option>CNY</option><option>USD</option><option>HKD</option></select></label><label><span>开始日期</span><input v-model="account.periodStart" type="date" /></label><label><span>结束日期</span><input v-model="account.periodEnd" type="date" /></label></div><div class="modal-actions"><button type="button" class="button" @click="editAccountOpen = false">取消</button><button class="button primary">保存修改</button></div></form></div>

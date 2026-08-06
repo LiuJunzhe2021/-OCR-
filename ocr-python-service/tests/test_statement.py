@@ -75,3 +75,34 @@ def test_report_summary_is_not_misread_as_transaction_detail():
     assert len(result["transactions"]) == 1
     assert result["transactions"][0]["amount"] == -300.0
     assert result["transactions"][0]["transactionNature"] == "采购付款"
+
+
+def test_summary_tables_produce_shared_analysis_metrics():
+    sections = [{"source": "Excel工作表：报告", "metadata": {}, "tableRows": [
+        ["3.3.1", "流入"],
+        ["本方名称", "2024/01", "2024/02"],
+        ["甲公司", "100", "200"],
+        ["3.3.2", "流出"],
+        ["本方名称", "2024/01", "2024/02"],
+        ["甲公司", "30", "50"],
+        ["3.4.1", "流入"],
+        ["分类", "合计", "2024/01"],
+        ["经营收入", "300", "100"],
+    ]}]
+    result = normalize_statement(sections, "银行流水尽调报告")
+    assert result["analysis"]["totalInflow"] == 300
+    assert result["analysis"]["totalOutflow"] == 80
+    assert result["analysis"]["monthly"][0] == {"month": "2024-01", "inflow": 100.0, "outflow": 30.0}
+    assert result["analysis"]["categories"][0]["name"] == "经营收入"
+
+
+def test_account_table_with_counterparty_availability_is_not_misclassified():
+    sections = [{"source": "Excel工作表：报告", "metadata": {}, "tableRows": [
+        ["甲公司"],
+        ["账号", "所属银行", "数据时间范围", "余额不连续", "对方名称", "交易信息"],
+        ["622600001234", "招商银行", "2024.01.01~2024.12.31", "无", "有", "有"],
+    ]}]
+    result = normalize_statement(sections, "尽调报告")
+    assert result["detectedTables"][0]["type"] == "account_summary"
+    assert result["accounts"][0]["accountNumber"] == "622600001234"
+    assert result["statement"]["periodStart"] == "2024-01-01"

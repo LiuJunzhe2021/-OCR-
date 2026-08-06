@@ -63,7 +63,9 @@ class LlmClassifyClient:
                           self._sys_fill(), self._prompt_list)
 
     def test_connection(self, api_url: str, api_key: str, model: str) -> dict[str, Any]:
-        url = api_url.rstrip("/") + "/chat/completions"
+        if not api_url or not model:
+            return {"success": False, "message": "API 地址和模型名称不能为空"}
+        url = self._completion_url(api_url)
         headers = {"Content-Type": "application/json"}
         if api_key:
             headers["Authorization"] = f"Bearer {api_key}"
@@ -71,7 +73,11 @@ class LlmClassifyClient:
             resp = self._session.post(url, headers=headers, json={
                 "model": model, "messages": [{"role": "user", "content": "回复 OK"}],
                 "max_tokens": 5}, timeout=15)
-            resp.raise_for_status()
+            if not resp.ok:
+                return {"success": False, "message": self._http_error(resp)}
+            data = resp.json()
+            if not data.get("choices"):
+                return {"success": False, "message": "接口响应中缺少 choices，请确认使用 OpenAI 兼容接口"}
             return {"success": True, "message": f"连接成功 ({model})"}
         except Exception as e:
             return {"success": False, "message": str(e)[:200]}
@@ -82,7 +88,13 @@ class LlmClassifyClient:
         self, transactions: list[dict[str, Any]], api_url: str, api_key: str,
         model: str, timeout: int, system_prompt: str, prompt_fn,
     ) -> dict[str, Any]:
-        url = api_url.rstrip("/") + "/chat/completions"
+        if len(transactions) > 100:
+            combined: list[dict[str, Any]] = []
+            for offset in range(0, len(transactions), 100):
+                batch = self._call(transactions[offset:offset + 100], api_url, api_key, model, timeout, system_prompt, prompt_fn)
+                combined.extend(batch.get("results", []))
+            return {"results": combined}
+        url = self._completion_url(api_url)
         headers = {"Content-Type": "application/json"}
         if api_key:
             headers["Authorization"] = f"Bearer {api_key}"
@@ -101,10 +113,19 @@ class LlmClassifyClient:
         for attempt in range(3):
             try:
                 resp = self._session.post(url, headers=headers, json=payload, timeout=timeout)
-                if resp.status_code == 401:
+                if resp.status_code in {400, 422} and "response_format" in payload:
+                    # Ollama 及部分兼容服务不接受 response_format。
+                    payload.pop("response_format", None)
+                    continue
+                if resp.status_code in {401, 403}:
                     raise LlmClassifyError("API Key 无效（401）")
-                resp.raise_for_status()
-                return self._parse_json(resp.json()["choices"][0]["message"]["content"])
+                if not resp.ok:
+                    raise LlmClassifyError(self._http_error(resp))
+                data = resp.json()
+                content = data.get("choices", [{}])[0].get("message", {}).get("content")
+                if not content:
+                    raise LlmClassifyError("LLM 响应格式无效：缺少 choices[0].message.content")
+                return self._parse_json(content)
             except LlmClassifyError:
                 raise
             except Exception as e:
@@ -112,6 +133,22 @@ class LlmClassifyClient:
                     raise LlmClassifyError(f"LLM 调用失败（已重试3次）: {e}") from e
                 time.sleep(1.0 * (attempt + 1))
         raise LlmClassifyError("LLM 调用失败")
+
+    @staticmethod
+    def _completion_url(api_url: str) -> str:
+        url = api_url.strip().rstrip("/")
+        return url if url.endswith("/chat/completions") else url + "/chat/completions"
+
+    @staticmethod
+    def _http_error(resp) -> str:
+        try:
+            body = resp.json()
+            detail = body.get("error", body)
+            if isinstance(detail, dict):
+                detail = detail.get("message") or detail.get("detail") or json.dumps(detail, ensure_ascii=False)
+        except Exception:
+            detail = resp.text
+        return f"LLM 接口返回 HTTP {resp.status_code}: {str(detail)[:300]}"
 
     # ---- system prompts ----
 

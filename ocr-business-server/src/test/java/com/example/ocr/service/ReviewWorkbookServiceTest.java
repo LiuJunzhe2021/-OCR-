@@ -28,4 +28,27 @@ class ReviewWorkbookServiceTest {
             assertThat(workbook.getSheet("数据1_PDF第1页")).isNotNull();
         }
     }
+
+    @Test
+    void dueDiligenceSheetUsesSummaryAnalysisWhenThereAreNoTransactions() throws Exception {
+        OcrTask task = new OcrTask("task-2", "尽调汇总.xlsx", "xlsx", "auto", "unused");
+        task.completed("""
+                {"statement":{"entityName":"甲公司"},"transactions":[],
+                 "analysis":{"totalInflow":300,"totalOutflow":80,"netCashflow":220,
+                   "monthly":[{"month":"2024-01","inflow":100,"outflow":30}],
+                   "categories":[{"name":"经营收入","inflow":300,"outflow":0}],
+                   "counterparties":[{"name":"客户甲","inflow":300,"outflow":0}]},
+                 "validation":{"status":"PASS","issues":[],"transactionIssueCount":0},"sections":[]}
+                """);
+        byte[] bytes = new ReviewWorkbookService(new ObjectMapper()).create(task);
+
+        try (var workbook = WorkbookFactory.create(new ByteArrayInputStream(bytes))) {
+            var sheet = workbook.getSheet("现金流尽调报告");
+            assertThat(sheet.getRow(10).getCell(1).getNumericCellValue()).isEqualTo(300);
+            assertThat(sheet.getRow(10).getCell(2).getNumericCellValue()).isEqualTo(-80);
+            assertThat(sheet.getRow(24).getCell(1).getStringCellValue()).isEqualTo("2024-01");
+            assertThat(sheet.getRow(24).getCell(2).getNumericCellValue()).isEqualTo(100);
+            assertThat(sheet.getRow(24).getCell(3).getNumericCellValue()).isEqualTo(-30);
+        }
+    }
 }

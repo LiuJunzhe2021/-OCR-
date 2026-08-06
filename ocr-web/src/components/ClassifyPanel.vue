@@ -6,7 +6,11 @@ import {
 } from '../api'
 import { LLM_PROVIDERS, loadLlmSettings, saveLlmSettings } from '../llm-presets'
 
-const props = defineProps({ taskId: { type: String, required: true } })
+const props = defineProps({
+  taskId: { type: String, required: true },
+  transactionCount: { type: Number, default: 0 },
+})
+const emit = defineEmits(['completed'])
 
 // 模式
 const modes = [
@@ -69,6 +73,9 @@ const modeActions = {
 }
 
 async function startAnalyze() {
+  if (!props.transactionCount) {
+    error.value = '当前文件只有汇总分析表，没有逐笔交易；LLM 分类、审核和纠错需要上传原始银行流水明细。'; return
+  }
   if (!llmSettings.value.apiUrl || !llmSettings.value.model) {
     error.value = '请先配置 API 地址和模型名称'; return
   }
@@ -77,6 +84,7 @@ async function startAnalyze() {
   try {
     const fn = modeActions[activeMode.value]
     analyzeResult.value = await fn(props.taskId, { llm: llmSettings.value })
+    if (analyzeResult.value?.success) emit('completed')
   } catch (e) {
     error.value = e?.response?.data?.message || e.message || '分析失败'
   } finally { loading.value = false }
@@ -133,10 +141,13 @@ const currentMode = computed(() => modes.find(m => m.key === activeMode.value))
       >{{ m.icon }} {{ m.label }}</button>
     </div>
     <p class="cp-mode-desc">{{ currentMode?.desc }}</p>
+    <div v-if="!transactionCount" class="cp-audit-tip">
+      当前识别结果为汇总报告，没有逐笔交易。你仍可配置并测试模型连接；如需自动分类、审核或纠错，请上传原始银行流水明细。
+    </div>
 
     <!-- ====== 操作 ====== -->
     <div class="cp-actions">
-      <button class="primary" :disabled="loading || !llmSettings.apiUrl || !llmSettings.model" @click="startAnalyze">
+      <button class="primary" :disabled="loading || !transactionCount || !llmSettings.apiUrl || !llmSettings.model" @click="startAnalyze">
         {{ loading ? '分析中...' : `开始${currentMode?.label}` }}
       </button>
     </div>

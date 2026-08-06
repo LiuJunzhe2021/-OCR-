@@ -29,8 +29,9 @@ final class DueDiligenceReportSheet {
 
         JsonNode statement = root.path("statement");
         List<Tx> transactions = transactions(root);
-        double inflow = transactions.stream().mapToDouble(Tx::amount).filter(v -> v > 0).sum();
-        double outflow = transactions.stream().mapToDouble(Tx::amount).filter(v -> v < 0).sum();
+        JsonNode analysis = root.path("analysis");
+        double inflow = transactions.isEmpty() ? analysis.path("totalInflow").asDouble() : transactions.stream().mapToDouble(Tx::amount).filter(v -> v > 0).sum();
+        double outflow = transactions.isEmpty() ? -analysis.path("totalOutflow").asDouble() : transactions.stream().mapToDouble(Tx::amount).filter(v -> v < 0).sum();
 
         section(sheet, 4, "一", "核心速览", s.section);
         section(sheet, 5, "1.1", "核心统计", s.subsection);
@@ -57,8 +58,8 @@ final class DueDiligenceReportSheet {
 
         section(sheet, 21, "三", "指标明细", s.section);
         int row = monthly(sheet, 22, transactions, root, s);
-        row = categories(sheet, row + 1, transactions, s);
-        counterparties(sheet, row + 1, transactions, s);
+        row = categories(sheet, row + 1, transactions, root, s);
+        counterparties(sheet, row + 1, transactions, root, s);
 
         sheet.createFreezePane(0, 4);
         sheet.setRepeatingRows(CellRangeAddress.valueOf("1:4"));
@@ -70,6 +71,16 @@ final class DueDiligenceReportSheet {
     private static int monthly(Sheet sheet, int start, List<Tx> txs, JsonNode root, Styles s) {
         section(sheet, start, "3.1", "月度收支", s.subsection);
         labels(sheet, start + 1, s, "月份", "流入金额", "流出金额", "净现金流");
+        if (txs.isEmpty() && root.path("analysis").path("monthly").isArray()) {
+            int row = start + 2;
+            for (JsonNode item : root.path("analysis").path("monthly")) {
+                double in = item.path("inflow").asDouble();
+                double out = -item.path("outflow").asDouble();
+                values(sheet, row++, s.money, item.path("month").asText(), in, out, in + out);
+            }
+            if (row == start + 2) values(sheet, row++, s.value, "暂无数据", "", "", "");
+            return row - 1;
+        }
         YearMonth first = firstMonth(txs, root);
         for (int i = 0; i < 12; i++) {
             YearMonth month = first.plusMonths(i);
@@ -80,7 +91,7 @@ final class DueDiligenceReportSheet {
         return start + 13;
     }
 
-    private static int categories(Sheet sheet, int start, List<Tx> txs, Styles s) {
+    private static int categories(Sheet sheet, int start, List<Tx> txs, JsonNode root, Styles s) {
         section(sheet, start, "3.2", "交易分类汇总", s.subsection);
         labels(sheet, start + 1, s, "交易分类", "流入金额", "流出金额", "净额");
         Map<String, double[]> grouped = new LinkedHashMap<>();
@@ -89,6 +100,15 @@ final class DueDiligenceReportSheet {
             totals[tx.amount >= 0 ? 0 : 1] += tx.amount;
         }
         int row = start + 2;
+        if (txs.isEmpty()) {
+            for (JsonNode item : root.path("analysis").path("categories")) {
+                double in = item.path("inflow").asDouble();
+                double out = -item.path("outflow").asDouble();
+                values(sheet, row++, s.money, item.path("name").asText("其他"), in, out, in + out);
+            }
+            if (row == start + 2) values(sheet, row++, s.value, "暂无数据", "", "", "");
+            return row - 1;
+        }
         for (Map.Entry<String, double[]> entry : grouped.entrySet()) {
             double[] totals = entry.getValue();
             values(sheet, row++, s.money, entry.getKey(), totals[0], totals[1], totals[0] + totals[1]);
@@ -97,7 +117,7 @@ final class DueDiligenceReportSheet {
         return row - 1;
     }
 
-    private static void counterparties(Sheet sheet, int start, List<Tx> txs, Styles s) {
+    private static void counterparties(Sheet sheet, int start, List<Tx> txs, JsonNode root, Styles s) {
         section(sheet, start, "3.3", "主要交易对手方", s.subsection);
         labels(sheet, start + 1, s, "对方名称", "流入金额", "流出金额", "净额");
         Map<String, double[]> grouped = new HashMap<>();
@@ -105,6 +125,11 @@ final class DueDiligenceReportSheet {
             String name = tx.counterparty.isBlank() ? "无对方名称" : tx.counterparty;
             double[] totals = grouped.computeIfAbsent(name, ignored -> new double[2]);
             totals[tx.amount >= 0 ? 0 : 1] += tx.amount;
+        }
+        if (txs.isEmpty()) {
+            for (JsonNode item : root.path("analysis").path("counterparties")) {
+                grouped.put(item.path("name").asText("无对方名称"), new double[]{item.path("inflow").asDouble(), -item.path("outflow").asDouble()});
+            }
         }
         List<Map.Entry<String, double[]>> entries = new ArrayList<>(grouped.entrySet());
         entries.sort(Comparator.comparingDouble((Map.Entry<String, double[]> e) ->

@@ -6,12 +6,6 @@ export const LLM_PROVIDERS = {
     models: ['gpt-4o', 'gpt-4o-mini', 'gpt-4-turbo', 'o3-mini'],
     requiresKey: true,
   },
-  claude: {
-    name: 'Claude (Anthropic)',
-    apiUrl: 'https://api.anthropic.com/v1',
-    models: ['claude-sonnet-5', 'claude-fable-5', 'claude-opus-5', 'claude-haiku-4-5'],
-    requiresKey: true,
-  },
   ollama: {
     name: 'Ollama (本地)',
     apiUrl: 'http://localhost:11434/v1',

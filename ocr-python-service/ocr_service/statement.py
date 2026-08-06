@@ -189,14 +189,15 @@ def _table_type(headers: list[str], title: str) -> str:
     mapping = _header_mapping(headers)
     if _is_transaction_header(mapping):
         return "transaction_detail"
-    if ("本方账号" in text or "账号" in headers) and ("所属银行" in text or "本方银行" in text):
-        return "account_summary"
-    if "对方名称" in text or "对手方" in text or "流入方" in text or "流出方" in text:
+    counterparty_metrics = any(token in text for token in ("金额", "总额", "差额", "笔数", "构成", "占比"))
+    if (("对方名称" in text and counterparty_metrics) or "对手方" in text or "流入方" in text or "流出方" in text):
         return "counterparty_analysis"
-    if any(re.fullmatch(r"20\d{2}[/.-]\d{1,2}", item) for item in headers):
-        return "monthly_summary"
     if "分类" in text and ("金额" in text or "合计" in text):
         return "category_summary"
+    if any(re.fullmatch(r"20\d{2}[/.-]\d{1,2}", item) for item in headers):
+        return "monthly_summary"
+    if ("本方账号" in text or "账号" in headers) and ("所属银行" in text or "本方银行" in text):
+        return "account_summary"
     if "质量" in text or "校验" in text or "风险" in text:
         return "quality_or_risk"
     return "structured_table"
@@ -266,6 +267,78 @@ def _detected_accounts(tables: list[dict[str, Any]]) -> list[dict[str, Any]]:
     return accounts
 
 
+def _number(value: Any) -> float:
+    parsed = _decimal(value)
+    return float(parsed) if parsed is not None else 0.0
+
+
+def _analysis(transactions: list[dict[str, Any]], tables: list[dict[str, Any]]) -> dict[str, Any]:
+    """为前端和导出提供同一份分析口径，兼容逐笔流水及汇总型尽调表。"""
+    monthly: dict[str, list[float]] = {}
+    categories: dict[str, list[float]] = {}
+    counterparties: dict[str, list[float]] = {}
+    if transactions:
+        for tx in transactions:
+            amount = _number(tx.get("amount"))
+            month = str(tx.get("transactionDate") or "")[:7]
+            if month:
+                bucket = monthly.setdefault(month, [0.0, 0.0])
+                bucket[0 if amount >= 0 else 1] += abs(amount)
+            category = str(tx.get("category") or "其他")
+            bucket = categories.setdefault(category, [0.0, 0.0])
+            bucket[0 if amount >= 0 else 1] += abs(amount)
+            party = str(tx.get("counterparty") or "无对方名称")
+            bucket = counterparties.setdefault(party, [0.0, 0.0])
+            bucket[0 if amount >= 0 else 1] += abs(amount)
+    else:
+        canonical_counterparty_ids = {
+            table["id"] for table in tables
+            if table["type"] == "counterparty_analysis"
+            and ("前10大流入方" in table.get("title", "") or "前10大流出方" in table.get("title", ""))
+        }
+        for table in tables:
+            headers, title = table["headers"], table.get("title", "")
+            records = [dict(zip(headers, row)) for row in table["rows"]]
+            if table["type"] == "monthly_summary":
+                out = "流出" in title or any("流出合计" in h for h in headers)
+                incoming = "流入" in title or any("流入合计" in h for h in headers)
+                if out or incoming:
+                    for record in records:
+                        for header, value in record.items():
+                            if re.fullmatch(r"20\d{2}[/.-]\d{1,2}", header):
+                                month = header.replace("/", "-").replace(".", "-")
+                                monthly.setdefault(month, [0.0, 0.0])[1 if out else 0] += abs(_number(value))
+            elif table["type"] == "category_summary":
+                for record in records:
+                    name = record.get("分类") or "其他"
+                    total = _number(record.get("合计"))
+                    if not total:
+                        continue
+                    out = "流出" in title or total < 0
+                    categories.setdefault(name, [0.0, 0.0])[1 if out else 0] += abs(total)
+            elif table["type"] == "counterparty_analysis":
+                if canonical_counterparty_ids and table["id"] not in canonical_counterparty_ids:
+                    continue
+                for record in records:
+                    name = record.get("对方名称") or record.get("有效流入方") or record.get("核心流出方")
+                    if not name:
+                        continue
+                    incoming = _number(record.get("流入总额") or record.get("流入金额"))
+                    outgoing = _number(record.get("流出总额") or record.get("流出金额"))
+                    if not incoming and not outgoing:
+                        continue
+                    bucket = counterparties.setdefault(name, [0.0, 0.0])
+                    bucket[0] += abs(incoming)
+                    bucket[1] += abs(outgoing)
+    month_rows = [{"month": key, "inflow": round(value[0], 2), "outflow": round(value[1], 2)} for key, value in sorted(monthly.items())]
+    category_rows = [{"name": key, "inflow": round(value[0], 2), "outflow": round(value[1], 2)} for key, value in categories.items()]
+    party_rows = [{"name": key, "inflow": round(value[0], 2), "outflow": round(value[1], 2)} for key, value in counterparties.items()]
+    total_in = round(sum(row["inflow"] for row in month_rows) or sum(row["inflow"] for row in category_rows), 2)
+    total_out = round(sum(row["outflow"] for row in month_rows) or sum(row["outflow"] for row in category_rows), 2)
+    return {"totalInflow": total_in, "totalOutflow": total_out, "netCashflow": round(total_in - total_out, 2),
+            "monthly": month_rows, "categories": category_rows, "counterparties": party_rows}
+
+
 def normalize_statement(sections: list[dict[str, Any]], full_text: str, source_name: str = "") -> dict[str, Any]:
     transactions: list[dict[str, Any]] = []
     validation_issues: list[dict[str, Any]] = []
@@ -276,6 +349,19 @@ def normalize_statement(sections: list[dict[str, Any]], full_text: str, source_n
     accounts = _detected_accounts(structured_tables)
     if len(accounts) == 1:
         statement.update(accounts[0])
+    elif accounts:
+        entities = sorted({item["entityName"] for item in accounts if item["entityName"]})
+        banks = sorted({item["bankName"] for item in accounts if item["bankName"]})
+        starts = sorted(item["periodStart"] for item in accounts if item["periodStart"])
+        ends = sorted(item["periodEnd"] for item in accounts if item["periodEnd"])
+        statement.update({
+            "entityName": entities[0] if len(entities) == 1 else f"{len(entities)}个主体",
+            "accountNumber": f"{len(accounts)}个账户",
+            "bankName": "、".join(banks),
+            "accountType": "混合" if len(entities) > 1 else "对公",
+            "periodStart": starts[0] if starts else None,
+            "periodEnd": ends[-1] if ends else None,
+        })
 
     for section_index, section in enumerate(sections):
         rows = section.get("tableRows") or []
@@ -374,6 +460,7 @@ def normalize_statement(sections: list[dict[str, Any]], full_text: str, source_n
         "accounts": accounts,
         "transactions": transactions,
         "detectedTables": structured_tables,
+        "analysis": _analysis(transactions, structured_tables),
         "validation": {
             "status": "PASS" if not validation_issues and transaction_issue_count == 0 else "REVIEW",
             "issues": validation_issues,

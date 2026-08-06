@@ -7,6 +7,7 @@ import org.springframework.beans.factory.annotation.Value;
 import org.springframework.stereotype.Service;
 import org.springframework.transaction.annotation.Transactional;
 import org.springframework.web.client.RestClient;
+import org.springframework.web.client.RestClientResponseException;
 
 import java.math.BigDecimal;
 import java.time.LocalDate;
@@ -18,19 +19,16 @@ import java.util.Map;
 public class LlmClassifyService {
 
     private final OcrTransactionRepository transactionRepo;
-    private final TransactionSplitService splitService;
     private final RestClient restClient;
     private final ObjectMapper mapper;
 
     public LlmClassifyService(
             OcrTransactionRepository transactionRepo,
-            TransactionSplitService splitService,
             RestClient.Builder builder,
             @Value("${app.llm.python-base-url:http://127.0.0.1:5002}") String baseUrl,
             ObjectMapper mapper
     ) {
         this.transactionRepo = transactionRepo;
-        this.splitService = splitService;
         this.restClient = builder.baseUrl(baseUrl).build();
         this.mapper = mapper;
     }
@@ -40,7 +38,7 @@ public class LlmClassifyService {
     public Map<String, Object> classify(String taskId, Map<String, Object> llmConfig) {
         return run(taskId, llmConfig, "/internal/classify", (row, r) -> {
             String cat = (String) r.get("category");
-            if (cat != null) row.setCategory(cat);
+            if (cat != null) row.setCategory(clip(cat, 50));
         });
     }
 
@@ -49,8 +47,8 @@ public class LlmClassifyService {
             String risk = (String) r.getOrDefault("risk", "");
             String reason = (String) r.getOrDefault("reason", "");
             if (!"PASS".equals(risk) && !risk.isBlank()) {
-                row.setRemarks((row.getRemarks() != null ? row.getRemarks() + " | " : "")
-                        + "【审核】" + risk + " " + reason);
+                row.setRemarks(clip((row.getRemarks() != null ? row.getRemarks() + " | " : "")
+                        + "【审核】" + risk + " " + reason, 400));
                 row.setManualReviewRequired(true);
             }
         });
@@ -62,13 +60,13 @@ public class LlmClassifyService {
             Map<String, Object> corrections = (Map<String, Object>) r.get("corrections");
             if (corrections == null) return;
             if (corrections.containsKey("description"))
-                row.setDescription((String) corrections.get("description"));
+                row.setDescription(clip((String) corrections.get("description"), 2000));
             if (corrections.containsKey("amount"))
                 row.setAmount(new BigDecimal(corrections.get("amount").toString()));
             if (corrections.containsKey("balance"))
                 row.setBalance(new BigDecimal(corrections.get("balance").toString()));
             if (corrections.containsKey("counterpartyName"))
-                row.setCounterpartyName((String) corrections.get("counterpartyName"));
+                row.setCounterpartyName(clip((String) corrections.get("counterpartyName"), 200));
             if (corrections.containsKey("transactionDate"))
                 row.setTransactionDate(LocalDate.parse((String) corrections.get("transactionDate")));
             if (corrections.containsKey("direction"))
@@ -82,14 +80,14 @@ public class LlmClassifyService {
             Map<String, Object> fills = (Map<String, Object>) r.get("fills");
             if (fills == null) return;
             if (fills.containsKey("description") && (row.getDescription() == null || row.getDescription().isBlank()))
-                row.setDescription((String) fills.get("description"));
+                row.setDescription(clip((String) fills.get("description"), 2000));
             if (fills.containsKey("direction") && (row.getDirection() == null || row.getDirection().isBlank()))
                 row.setDirection((String) fills.get("direction"));
         });
     }
 
     public Map<String, Object> testConnection(Map<String, Object> llmConfig) {
-        String resp = restClient.post().uri("/internal/llm/test").body(llmConfig).retrieve().body(String.class);
+        String resp = postJson("/internal/llm/test", llmConfig);
         try { return mapper.readValue(resp, Map.class); }
         catch (Exception e) { throw new IllegalStateException("解析响应失败: " + e.getMessage()); }
     }
@@ -116,9 +114,7 @@ public class LlmClassifyService {
             return m;
         }).toList();
 
-        String resp = restClient.post().uri(uri)
-                .body(Map.of("transactions", txList, "llm", llmConfig))
-                .retrieve().body(String.class);
+        String resp = postJson(uri, Map.of("transactions", txList, "llm", llmConfig));
 
         Map<String, Object> result;
         try { result = mapper.readValue(resp, Map.class); }
@@ -128,10 +124,10 @@ public class LlmClassifyService {
             throw new IllegalStateException("LLM 分析失败: " + result.getOrDefault("message", "未知"));
         }
 
-        Map<String, String> idMap = new HashMap<>();
+        Map<String, OcrTransaction> idMap = new HashMap<>();
         for (OcrTransaction tr : rows) {
-            idMap.put(tr.getId(), tr.getId());
-            if (tr.getId().length() >= 8) idMap.put(tr.getId().substring(0, 8), tr.getId());
+            idMap.put(tr.getId(), tr);
+            if (tr.getId().length() >= 8) idMap.put(tr.getId().substring(0, 8), tr);
         }
 
         List<Map<String, Object>> results = (List<Map<String, Object>>) result.get("results");
@@ -139,12 +135,12 @@ public class LlmClassifyService {
         if (results != null) {
             for (Map<String, Object> r : results) {
                 String id = (String) r.get("id");
-                String fullId = id != null ? idMap.get(id) : null;
-                if (fullId != null) {
+                OcrTransaction target = id != null ? idMap.get(id) : null;
+                if (target != null) {
                     try {
-                        OcrTransaction patch = new OcrTransaction("");
-                        updater.update(patch, r);
-                        splitService.updateTransaction(fullId, patch);
+                        updater.update(target, r);
+                        target.touch();
+                        transactionRepo.save(target);
                         updated++;
                     } catch (Exception ignored) { /* 单行失败不中断 */ }
                 }
@@ -153,6 +149,29 @@ public class LlmClassifyService {
         result.put("processed", updated);
         result.put("total", rows.size());
         return result;
+    }
+
+    private String postJson(String uri, Object body) {
+        try {
+            return restClient.post().uri(uri).body(body).retrieve().body(String.class);
+        } catch (RestClientResponseException exc) {
+            try {
+                Map<?, ?> error = mapper.readValue(exc.getResponseBodyAsString(), Map.class);
+                Object message = error.containsKey("message") ? error.get("message") : "LLM 服务调用失败";
+                throw new IllegalStateException(String.valueOf(message));
+            } catch (IllegalStateException parsed) {
+                throw parsed;
+            } catch (Exception ignored) {
+                throw new IllegalStateException("LLM 服务调用失败（HTTP " + exc.getStatusCode().value() + "）");
+            }
+        } catch (Exception exc) {
+            throw new IllegalStateException("无法连接 LLM 服务，请确认 OCR 服务 5001 已启动: " + exc.getMessage());
+        }
+    }
+
+    private static String clip(String value, int max) {
+        if (value == null || value.length() <= max) return value;
+        return value.substring(0, max);
     }
 
     @FunctionalInterface
